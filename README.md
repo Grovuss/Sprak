@@ -1,19 +1,27 @@
 # Sprak
 
-A gamified German learning website built with React + Vite.
+A Vite + React build of the Sprak German-learning app.
 
-## Local setup
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Vercel settings
+## Deploy on Vercel
+
+Use these settings:
 
 - Framework Preset: Vite
+- Install Command: npm install
 - Build Command: npm run build
 - Output Directory: dist
-- Install Command: npm install
 
-After deploying, add your Vercel domain to Firebase Authentication > Settings > Authorized domains.
+## Firebase Auth
+
+After deploying, add your Vercel domain in Firebase:
+
+Authentication → Settings → Authorized domains
+
+Add your `.vercel.app` domain.
