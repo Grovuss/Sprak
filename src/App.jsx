@@ -51,6 +51,54 @@ const ACHIEVEMENTS = [
   {id:"perfect_lesson",name:"Perfectionist",description:"Complete a lesson with 100% accuracy",icon:"🎯"},
 ];
 
+const CURRENCY = { name: "Marks", icon: "ℳ", full: "Sprak Marks" };
+
+const LEAGUES = [
+  { id: "bronze", name: "Bronze", icon: "🥉", minXp: 0 },
+  { id: "silver", name: "Silver", icon: "🥈", minXp: 750 },
+  { id: "gold", name: "Gold", icon: "🥇", minXp: 1750 },
+  { id: "emerald", name: "Emerald", icon: "💚", minXp: 3500 },
+  { id: "diamond", name: "Diamond", icon: "💎", minXp: 6000 },
+  { id: "meister", name: "Meister", icon: "👑", minXp: 10000 },
+];
+
+const MOCK_PLAYERS = [
+  { username:"WortWolf", displayName:"Mika", avatar:"fox", xp:8420, weeklyXp:1840, streak:32, title:"Der Destroyer", border:"Crystal Frame" },
+  { username:"GrammarGoblin", displayName:"Jules", avatar:"frog", xp:7340, weeklyXp:1675, streak:18, title:"Grammar Goblin", border:"Forest Frame" },
+  { username:"BrezelBee", displayName:"Tara", avatar:"bee", xp:6110, weeklyXp:1420, streak:9, title:"Café Champion", border:"Golden Frame" },
+  { username:"OwlOtto", displayName:"Sam", avatar:"owl", xp:5230, weeklyXp:1290, streak:14, title:"Wortwald Walker", border:"Bookish Frame" },
+  { username:"HalloBear", displayName:"Ren", avatar:"bear", xp:4110, weeklyXp:980, streak:6, title:"Rising Star", border:"Wooden Frame" },
+];
+
+const SHOP_ITEMS = [
+  { id:"title_grammar_goblin", type:"title", name:"Grammar Goblin", icon:"👺", rarity:"Rare", price:350 },
+  { id:"title_der_destroyer", type:"title", name:"Der Destroyer", icon:"🛡️", rarity:"Epic", price:700 },
+  { id:"title_brezel_boss", type:"title", name:"Brezel Boss", icon:"🥨", rarity:"Rare", price:420 },
+  { id:"border_forest", type:"border", name:"Forest Frame", icon:"🌲", rarity:"Common", price:250 },
+  { id:"border_gold", type:"border", name:"Golden Frame", icon:"✨", rarity:"Epic", price:900 },
+  { id:"border_crystal", type:"border", name:"Crystal Frame", icon:"💎", rarity:"Legendary", price:1500 },
+  { id:"banner_berlin", type:"banner", name:"Berlin Night Banner", icon:"🌃", rarity:"Rare", price:600 },
+  { id:"banner_wortwald", type:"banner", name:"Wortwald Banner", icon:"🌳", rarity:"Common", price:300 },
+  { id:"decor_pretzel", type:"decoration", name:"Pretzel Pin", icon:"🥨", rarity:"Common", price:120 },
+  { id:"decor_crown", type:"decoration", name:"Tiny Crown", icon:"👑", rarity:"Legendary", price:1800 },
+  { id:"avatar_dragon", type:"avatar", name:"Dragon Avatar", icon:"🐉", rarity:"Legendary", price:2200 },
+  { id:"avatar_penguin", type:"avatar", name:"Penguin Avatar", icon:"🐧", rarity:"Epic", price:1100 },
+];
+
+function getWeeklyLeague(xp) {
+  let current = LEAGUES[0];
+  for (const l of LEAGUES) if ((xp||0) >= l.minXp) current = l;
+  return current;
+}
+
+function getShopRotation() {
+  const seed = getDailyKey(); let hash = 0;
+  for (const c of seed) hash = ((hash << 5) - hash) + c.charCodeAt(0);
+  const pool = [...SHOP_ITEMS]; const result = []; let h = Math.abs(hash);
+  while (result.length < 6 && pool.length) { const i = h % pool.length; result.push(pool.splice(i,1)[0]); h = Math.abs(Math.floor(h * 1.6180339)); }
+  return result;
+}
+
 // ─── CURRICULUM ───────────────────────────────────────────────────────────────
 // Each unit has lessons, each lesson has questions
 // Question types: mc (multiple choice), article, tap_build (tap words to build sentence), match (match pairs)
@@ -214,6 +262,109 @@ const UNITS = [
   }
 ];
 
+
+UNITS.push(
+  {
+    id: 7, title: "Travel Germany", icon: "🚆", color: "#20C997",
+    description: "Navigate stations, hotels, directions, and everyday travel moments.",
+    lessons: [
+      { id:"7-1", title:"Train Station", xpReward:55, intro:{title:"At the Bahnhof",body:"German train stations are full of useful words: Gleis (platform), Zug (train), Fahrkarte (ticket), and Verspätung (delay).",tip:"🚆 'Wo ist Gleis drei?' means 'Where is platform three?'"}, questions:[
+        {id:"q701",type:"mc",german:"Bahnhof",english:"train station",prompt:"What does 'Bahnhof' mean?",options:["airport","train station","hotel","street"],correct:"train station",explanation:"'der Bahnhof' is the train station."},
+        {id:"q702",type:"mc",german:"Fahrkarte",english:"ticket",prompt:"What is a 'Fahrkarte'?",options:["ticket","suitcase","platform","map"],correct:"ticket",explanation:"'die Fahrkarte' is a travel ticket."},
+        {id:"q703",type:"fill",german:"Der Zug hat ___.",english:"The train is delayed.",blank:"Verspätung",options:["Verspätung","Hunger","Zimmer","Wasser"],explanation:"'Verspätung' means delay."},
+        {id:"q704",type:"mc",prompt:"How do you ask 'Where is platform three?'",options:["Wo ist Gleis drei?","Wann ist Gleis drei?","Was kostet Gleis drei?","Ich bin Gleis drei."],correct:"Wo ist Gleis drei?",explanation:"'Wo ist...' asks where something is."},
+        {id:"q705",type:"tap_build",prompt:"Build: 'Where is the train?'",words:["Wo","ist","der","Zug","die","Straße"],correct:["Wo","ist","der","Zug"],explanation:"'Wo ist der Zug?' = Where is the train?"}
+      ]},
+      { id:"7-2", title:"Hotels & Directions", xpReward:55, intro:{title:"Finding Your Way",body:"Travel German is practical and forgiving. Focus on simple questions: where, how much, and I need.",tip:"🧭 'Ich suche...' means 'I am looking for...'"}, questions:[
+        {id:"q706",type:"mc",german:"Zimmer",english:"room",prompt:"What does 'Zimmer' mean?",options:["room","key","bed","door"],correct:"room",explanation:"'das Zimmer' means room."},
+        {id:"q707",type:"article",german:"Hotel",english:"hotel",prompt:"Which article goes with 'Hotel'?",options:["der","die","das"],correct:"das",explanation:"It's 'das Hotel'."},
+        {id:"q708",type:"fill",german:"Ich suche ___ Hotel.",english:"I am looking for the hotel.",blank:"das",options:["der","die","das","den"],explanation:"Hotel is neuter: das Hotel."},
+        {id:"q709",type:"mc",prompt:"What does 'links' mean?",options:["left","right","straight ahead","behind"],correct:"left",explanation:"'links' = left; 'rechts' = right."},
+        {id:"q710",type:"mc",prompt:"What does 'geradeaus' mean?",options:["straight ahead","left","right","nearby"],correct:"straight ahead",explanation:"'geradeaus' is a key direction word."}
+      ]}
+    ]
+  },
+  {
+    id: 8, title: "Daily Life", icon: "🏠", color: "#845EF7",
+    description: "Talk about routines, chores, home, and what you do every day.",
+    lessons: [
+      { id:"8-1", title:"Morning Routine", xpReward:60, intro:{title:"Everyday German",body:"Routines help you learn verbs naturally: wake up, eat, work, learn, sleep.",tip:"⏰ 'Ich stehe auf' means 'I get up.' The verb splits!"}, questions:[
+        {id:"q801",type:"mc",german:"aufstehen",english:"to get up",prompt:"What does 'aufstehen' mean?",options:["to get up","to eat","to sleep","to buy"],correct:"to get up",explanation:"'aufstehen' is a separable verb."},
+        {id:"q802",type:"fill",german:"Ich ___ um sieben Uhr auf.",english:"I get up at seven o'clock.",blank:"stehe",options:["stehe","steht","stehen","stehst"],explanation:"'Ich stehe ... auf' = I get up."},
+        {id:"q803",type:"mc",german:"arbeiten",english:"to work",prompt:"What does 'arbeiten' mean?",options:["to work","to live","to drink","to learn"],correct:"to work",explanation:"'arbeiten' = to work."},
+        {id:"q804",type:"tap_build",prompt:"Build: 'I learn German'",words:["Ich","lerne","Deutsch","du","lernst"],correct:["Ich","lerne","Deutsch"],explanation:"'Ich lerne Deutsch.'"},
+        {id:"q805",type:"mc",prompt:"What does 'jeden Tag' mean?",options:["every day","tonight","never","later"],correct:"every day",explanation:"'jeden Tag' = every day."}
+      ]},
+      { id:"8-2", title:"Home Words", xpReward:60, intro:{title:"Around the House",body:"House vocabulary is extremely useful because it shows up constantly in basic conversation.",tip:"🏠 Rooms often use 'das': das Zimmer, das Bad, das Wohnzimmer."}, questions:[
+        {id:"q806",type:"mc",german:"Küche",english:"kitchen",prompt:"What is 'Küche'?",options:["kitchen","bedroom","bathroom","garden"],correct:"kitchen",explanation:"'die Küche' = kitchen."},
+        {id:"q807",type:"article",german:"Tür",english:"door",prompt:"Which article goes with 'Tür'?",options:["der","die","das"],correct:"die",explanation:"'die Tür' = the door."},
+        {id:"q808",type:"mc",german:"Fenster",english:"window",prompt:"What does 'Fenster' mean?",options:["window","floor","wall","chair"],correct:"window",explanation:"'das Fenster' = window."},
+        {id:"q809",type:"fill",german:"Das ___ ist offen.",english:"The window is open.",blank:"Fenster",options:["Fenster","Tür","Tisch","Stuhl"],explanation:"'Das Fenster ist offen.'"},
+        {id:"q810",type:"mc",prompt:"What does 'sauber' mean?",options:["clean","dirty","loud","small"],correct:"clean",explanation:"'sauber' = clean."}
+      ]}
+    ]
+  },
+  {
+    id: 9, title: "Questions & Answers", icon: "❓", color: "#FAB005",
+    description: "Ask better questions and understand common answers.",
+    lessons: [
+      { id:"9-1", title:"Question Words", xpReward:65, intro:{title:"W-Fragen",body:"German question words often start with W: wer, was, wo, wann, warum, wie.",tip:"❓ 'Warum?' is 'Why?' — one of the most useful words in any language."}, questions:[
+        {id:"q901",type:"mc",german:"wer",english:"who",prompt:"What does 'wer' mean?",options:["who","what","where","when"],correct:"who",explanation:"'Wer?' = Who?"},
+        {id:"q902",type:"mc",german:"warum",english:"why",prompt:"What does 'warum' mean?",options:["why","where","when","how"],correct:"why",explanation:"'Warum?' = Why?"},
+        {id:"q903",type:"mc",prompt:"How do you ask 'Where are you?'",options:["Wo bist du?","Wer bist du?","Was bist du?","Wann bist du?"],correct:"Wo bist du?",explanation:"'Wo' means where."},
+        {id:"q904",type:"tap_build",prompt:"Build: 'What is that?'",words:["Was","ist","das","wer","wo"],correct:["Was","ist","das"],explanation:"'Was ist das?' = What is that?"},
+        {id:"q905",type:"fill",german:"___ kommst du?",english:"Where are you from?",blank:"Woher",options:["Woher","Warum","Wer","Wann"],explanation:"'Woher' = from where."}
+      ]},
+      { id:"9-2", title:"Yes, No, Maybe", xpReward:65, intro:{title:"Answering Naturally",body:"Simple answers make conversations possible, even with limited vocabulary.",tip:"👍 'Genau' means 'exactly' and Germans use it constantly."}, questions:[
+        {id:"q906",type:"mc",german:"ja",english:"yes",prompt:"What does 'ja' mean?",options:["yes","no","maybe","never"],correct:"yes",explanation:"'ja' = yes."},
+        {id:"q907",type:"mc",german:"nein",english:"no",prompt:"What does 'nein' mean?",options:["yes","no","thanks","please"],correct:"no",explanation:"'nein' = no."},
+        {id:"q908",type:"mc",german:"vielleicht",english:"maybe",prompt:"What does 'vielleicht' mean?",options:["maybe","always","never","soon"],correct:"maybe",explanation:"'vielleicht' = maybe."},
+        {id:"q909",type:"mc",prompt:"What does 'genau' mean in conversation?",options:["exactly","sorry","goodbye","hungry"],correct:"exactly",explanation:"'Genau' = exactly / right."},
+        {id:"q910",type:"fill",german:"Ja, ___!",english:"Yes, exactly!",blank:"genau",options:["genau","nein","bitte","tschüss"],explanation:"'Ja, genau!' is a very natural response."}
+      ]}
+    ]
+  },
+  {
+    id: 10, title: "Shopping & Money", icon: "🛒", color: "#F76707",
+    description: "Buy items, ask prices, and understand store phrases.",
+    lessons: [
+      { id:"10-1", title:"At the Store", xpReward:70, intro:{title:"Im Geschäft",body:"Shopping German is practical: ask how much something costs, say what you want, and understand common store words.",tip:"💶 'Was kostet das?' means 'How much does that cost?'"}, questions:[
+        {id:"q1001",type:"mc",german:"kaufen",english:"to buy",prompt:"What does 'kaufen' mean?",options:["to buy","to sell","to eat","to open"],correct:"to buy",explanation:"'kaufen' = to buy."},
+        {id:"q1002",type:"mc",prompt:"How do you ask 'How much does that cost?'",options:["Was kostet das?","Wo ist das?","Wer ist das?","Wie heißt das?"],correct:"Was kostet das?",explanation:"'kosten' means to cost."},
+        {id:"q1003",type:"fill",german:"Ich möchte das ___.",english:"I would like to buy that.",blank:"kaufen",options:["kaufen","essen","trinken","schlafen"],explanation:"'Ich möchte ... kaufen.'"},
+        {id:"q1004",type:"mc",german:"teuer",english:"expensive",prompt:"What does 'teuer' mean?",options:["expensive","cheap","small","new"],correct:"expensive",explanation:"'teuer' = expensive."},
+        {id:"q1005",type:"mc",german:"billig",english:"cheap",prompt:"What does 'billig' mean?",options:["cheap","expensive","free","broken"],correct:"cheap",explanation:"'billig' = cheap, sometimes low-quality depending on context."}
+      ]}
+    ]
+  },
+  {
+    id: 11, title: "Past & Future", icon: "⏳", color: "#15AABF",
+    description: "Talk about what happened and what will happen next.",
+    lessons: [
+      { id:"11-1", title:"Perfect Tense", xpReward:75, intro:{title:"Talking About the Past",body:"German often uses the perfect tense in conversation: ich habe gemacht, ich bin gegangen.",tip:"⏳ Most verbs use 'haben' + past participle. Movement verbs often use 'sein'."}, questions:[
+        {id:"q1101",type:"fill",german:"Ich habe Brot ___.",english:"I ate bread.",blank:"gegessen",options:["gegessen","essen","isst","esse"],explanation:"Perfect tense of essen: gegessen."},
+        {id:"q1102",type:"fill",german:"Er hat das Buch ___.",english:"He read the book.",blank:"gelesen",options:["gelesen","lesen","liest","las"],explanation:"Perfect tense of lesen: gelesen."},
+        {id:"q1103",type:"mc",prompt:"Which helper verb often goes with movement verbs?",options:["sein","haben","machen","werden"],correct:"sein",explanation:"Movement/change of state often uses sein."},
+        {id:"q1104",type:"fill",german:"Ich bin nach Berlin ___.",english:"I went/traveled to Berlin.",blank:"gefahren",options:["gefahren","fahren","fahre","fährst"],explanation:"'Ich bin ... gefahren.'"},
+        {id:"q1105",type:"mc",german:"gestern",english:"yesterday",prompt:"What does 'gestern' mean?",options:["yesterday","today","tomorrow","later"],correct:"yesterday",explanation:"'gestern' = yesterday."}
+      ]}
+    ]
+  },
+  {
+    id: 12, title: "Fluency Frontier", icon: "🌌", color: "#364FC7",
+    description: "Mixed advanced practice, idioms, opinions, and longer sentence patterns.",
+    lessons: [
+      { id:"12-1", title:"Opinions", xpReward:90, intro:{title:"Sound More Natural",body:"Once you can share opinions, German starts feeling like real conversation instead of vocabulary drills.",tip:"💬 'Ich finde...' means 'I think/find...' and is used constantly for opinions."}, questions:[
+        {id:"q1201",type:"mc",prompt:"How do you say 'I think that is good' naturally?",options:["Ich finde das gut","Ich bin das gut","Ich habe das gut","Ich gehe das gut"],correct:"Ich finde das gut",explanation:"'Ich finde das gut' is a natural opinion phrase."},
+        {id:"q1202",type:"mc",german:"trotzdem",english:"nevertheless",prompt:"What does 'trotzdem' mean?",options:["nevertheless","because","although","before"],correct:"nevertheless",explanation:"'trotzdem' = nevertheless / still."},
+        {id:"q1203",type:"fill",german:"Ich lerne Deutsch, ___ es schwer ist.",english:"I am learning German because it is hard.",blank:"weil",options:["weil","aber","und","oder"],explanation:"'weil' means because and sends the verb to the end."},
+        {id:"q1204",type:"mc",prompt:"What does 'Meiner Meinung nach' mean?",options:["In my opinion","After my meal","At my house","With my friend"],correct:"In my opinion",explanation:"A useful phrase for advanced conversation."},
+        {id:"q1205",type:"tap_build",prompt:"Build: 'In my opinion, German is fun'",words:["Meiner","Meinung","nach","ist","Deutsch","lustig"],correct:["Meiner","Meinung","nach","ist","Deutsch","lustig"],explanation:"'Meiner Meinung nach...' = In my opinion..."}
+      ]}
+    ]
+  }
+);
+
 // Flatten questions with unit/lesson info for quick lookup
 const ALL_QUESTIONS = [];
 UNITS.forEach(u => u.lessons.forEach(l => l.questions.forEach(q => {
@@ -267,8 +418,9 @@ function checkAchievements(user) {
 function getGameData(uid) { try { return JSON.parse(localStorage.getItem(`sprak_game_${uid}`) || "null"); } catch { return null; } }
 function saveGameData(uid, data) { localStorage.setItem(`sprak_game_${uid}`, JSON.stringify(data)); }
 function makeDefaultGameData(uid, extra = {}) {
-  return { uid, username: "", displayName: "", avatar: "bear", xp: 0, streak: 0, lastActiveDate: null,
-    achievements: [], stats: { lessonsCompleted: 0, puzzlesCompleted: 0, totalAnswered: 0, totalCorrect: 0, perfectLessons: 0 },
+  return { uid, username: "", displayName: "", avatar: "bear", xp: 0, weeklyXp: 0, marks: 250, streak: 0, lastActiveDate: null,
+    achievements: [], stats: { lessonsCompleted: 0, puzzlesCompleted: 0, totalAnswered: 0, totalCorrect: 0, perfectLessons: 0, giftsSent: 0 },
+    inventory: [], equipped: { title: "New Learner", border: "Starter Frame", banner: "Sprak Starter", decoration: "" },
     completedLessons: {}, wrongAnswers: {}, dailyCompletions: {}, createdAt: Date.now(), ...extra };
 }
 function firebaseErr(code) {
@@ -538,6 +690,47 @@ body{font-family:'Inter',sans-serif;background:#FEFAE0;color:#1a1a1a;min-height:
 .loading-logo{font-family:'Fredoka One',cursive;font-size:56px;color:var(--gold);animation:pulse 1.5s ease-in-out infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
 
+
+/* SOCIAL / SHOP / PROFILE */
+.social-page,.shop-page,.profile-page{max-width:1000px;margin:0 auto;padding:28px 20px;}
+.page-top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap;}
+.page-title{font-family:'Fredoka One',cursive;font-size:28px;color:var(--green);}
+.page-sub{font-size:13px;color:var(--muted);margin-top:4px;}
+.social-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;}
+.panel{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;}
+.panel-title{font-family:'Fredoka One',cursive;font-size:19px;color:var(--green);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.league-card{background:linear-gradient(135deg,var(--green),var(--gmid));color:#fff;border-radius:var(--r);padding:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+.league-icon{font-size:42px;}
+.league-name{font-family:'Fredoka One',cursive;font-size:22px;color:var(--gold);}
+.reset-pill{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);padding:6px 10px;border-radius:99px;font-size:12px;font-weight:700;}
+.rank-row,.friend-row,.gift-row{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:1px solid var(--cdark);background:var(--cream);margin-bottom:10px;}
+.rank-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--green);color:#fff;font-weight:800;font-size:12px;flex-shrink:0;}
+.rank-me{border-color:var(--gold);background:rgba(244,162,97,.15);}
+.mini-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid var(--cdark);font-size:24px;flex-shrink:0;}
+.row-main{flex:1;min-width:0;}
+.row-name{font-weight:800;font-size:14px;color:var(--text);}
+.row-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.row-score{font-family:'Fredoka One',cursive;color:var(--green);font-size:18px;white-space:nowrap;}
+.currency-pill{background:var(--gold);color:var(--green);padding:7px 12px;border-radius:99px;font-weight:800;display:inline-flex;align-items:center;gap:6px;}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
+.shop-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;border:2px solid transparent;display:flex;flex-direction:column;gap:10px;}
+.shop-card.owned{opacity:.65;background:var(--cream);}
+.shop-icon{font-size:42px;text-align:center;}
+.shop-name{font-weight:900;color:var(--text);text-align:center;}
+.shop-rarity{text-align:center;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--gdark);}
+.shop-price{text-align:center;font-family:'Fredoka One',cursive;font-size:20px;color:var(--green);}
+.profile-card{background:linear-gradient(135deg,var(--green),var(--gmid));color:#fff;border-radius:24px;box-shadow:var(--shadow);padding:26px;position:relative;overflow:hidden;}
+.profile-card::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 80% 20%,rgba(244,162,97,.25),transparent 40%);}
+.profile-inner{position:relative;z-index:1;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+.profile-big-av{width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.14);border:4px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:62px;}
+.profile-name{font-family:'Fredoka One',cursive;font-size:30px;color:var(--gold);}
+.profile-title{display:inline-flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:5px 12px;margin:8px 0;font-size:13px;font-weight:800;}
+.cosmetic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:14px;}
+.cosmetic-card{background:var(--white);border-radius:var(--rs);box-shadow:var(--ssm);padding:14px;border-left:4px solid var(--glight);}
+.cosmetic-type{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;}
+.cosmetic-name{font-weight:800;margin-top:3px;}
+@media(max-width:760px){.social-grid{grid-template-columns:1fr}.page-top{align-items:flex-start}.nav-right{gap:5px}.nav-user{font-size:12px;padding:5px 7px}}
+
 @media(max-width:640px){
   .stats-row{grid-template-columns:repeat(2,1fr);}
   .dash-actions{grid-template-columns:1fr;}
@@ -584,8 +777,11 @@ function Nav({ user, onLogout, onNavigate }) {
       <div className="nav-logo" onClick={() => onNavigate("dashboard")}>Spr<span>ak</span></div>
       <div className="nav-right">
         <div className="nav-streak">🔥 {user.streak || 0}</div>
+        <div className="nav-streak">{CURRENCY.icon} {user.marks || 0}</div>
         <div className="nav-user" onClick={() => onNavigate("roadmap")}>🗺️ Roadmap</div>
-        <div className="nav-user" onClick={() => onNavigate("dashboard")}>{av?.emoji || "🐻"} {user.displayName} <span style={{opacity:.6}}>Lv{level}</span></div>
+        <div className="nav-user" onClick={() => onNavigate("social")}>🏆 Social</div>
+        <div className="nav-user" onClick={() => onNavigate("shop")}>🛍️ Shop</div>
+        <div className="nav-user" onClick={() => onNavigate("profile")}>{av?.emoji || "🐻"} {user.displayName} <span style={{opacity:.6}}>Lv{level}</span></div>
         <button className="btn-nav" onClick={onLogout}>Logout</button>
       </div>
     </nav>
@@ -838,24 +1034,24 @@ function QuestionRenderer({ q, onAnswer }) {
   const [locked, setLocked] = useState(false);
   const [tapPlaced, setTapPlaced] = useState([]);
   const [tapUsed, setTapUsed] = useState([]);
-  const [tapDone, setTapDone] = useState(false);
 
   const correct = q.correct || q.blank;
+  const isTapCorrect = JSON.stringify(tapPlaced) === JSON.stringify(q.correct || []);
+  const isCorrect = q.type === "tap_build" ? isTapCorrect : selected === correct;
 
   const handleMC = opt => {
     if (locked) return;
-    setLocked(true); setSelected(opt);
+    setLocked(true);
+    setSelected(opt);
     const ok = opt === correct;
     if (ok) SFX.correct(); else SFX.wrong();
-    setTimeout(() => onAnswer(ok, opt), 1500);
   };
 
   const handleTapWord = word => {
     if (locked || tapUsed.includes(word)) return;
     SFX.click();
-    const newPlaced = [...tapPlaced, word];
-    const newUsed = [...tapUsed, word];
-    setTapPlaced(newPlaced); setTapUsed(newUsed);
+    setTapPlaced(p => [...p, word]);
+    setTapUsed(u => [...u, word]);
   };
 
   const handleTapRemove = idx => {
@@ -866,11 +1062,14 @@ function QuestionRenderer({ q, onAnswer }) {
   };
 
   const checkTap = () => {
-    if (locked||tapPlaced.length===0) return;
-    setLocked(true); setTapDone(true);
+    if (locked || tapPlaced.length === 0) return;
+    setLocked(true);
     const ok = JSON.stringify(tapPlaced) === JSON.stringify(q.correct);
     if (ok) SFX.correct(); else SFX.wrong();
-    setTimeout(() => onAnswer(ok, tapPlaced.join(" ")), 1600);
+  };
+
+  const goNext = () => {
+    onAnswer(isCorrect, q.type === "tap_build" ? tapPlaced.join(" ") : selected, q);
   };
 
   const showWordCard = q.german && (q.type === "mc" || q.type === "fill");
@@ -922,44 +1121,28 @@ function QuestionRenderer({ q, onAnswer }) {
         {q.type === "tap_build" && (
           <>
             <div className="q-prompt">{q.prompt}</div>
-            <div className="tap-target" onClick={()=>{}}>
-              {tapPlaced.map((w,i) => (
-                <span key={i} className="tap-word placed" onClick={()=>!locked&&handleTapRemove(i)}>{w}</span>
-              ))}
+            <div className="tap-target">
+              {tapPlaced.map((w,i) => <span key={i} className="tap-word placed" onClick={()=>!locked&&handleTapRemove(i)}>{w}</span>)}
               {tapPlaced.length===0 && <span style={{color:"var(--muted)",fontSize:13,fontStyle:"italic"}}>Tap words below to build the phrase…</span>}
             </div>
             <div className="word-bank">
-              {q.words.map((w,i) => (
-                <span key={i} className={`tap-word ${tapUsed.includes(w)&&tapPlaced.includes(w)?"used":""}`}
-                  onClick={()=>handleTapWord(w)}>{w}</span>
-              ))}
+              {q.words.map((w,i) => <span key={i} className={`tap-word ${tapUsed.includes(w)&&tapPlaced.includes(w)?"used":""}`} onClick={()=>handleTapWord(w)}>{w}</span>)}
             </div>
-            {!locked && tapPlaced.length > 0 && (
-              <button className="btn btn-primary next-btn" onClick={checkTap}>Check ✓</button>
-            )}
-            {locked && (
-              <div className={`feedback ${tapDone && JSON.stringify(tapPlaced)===JSON.stringify(q.correct)?"fb-ok":"fb-no"}`}>
-                <div className="fb-icon">{JSON.stringify(tapPlaced)===JSON.stringify(q.correct)?"✓":"✗"}</div>
-                <div className="fb-text">
-                  {JSON.stringify(tapPlaced)===JSON.stringify(q.correct)?"Correct!":
-                    <span>Incorrect — correct answer: <strong>{q.correct.join(" ")}</strong></span>}
-                  <div className="fb-exp">{q.explanation}</div>
-                </div>
-              </div>
-            )}
+            {!locked && tapPlaced.length > 0 && <button className="btn btn-primary next-btn" onClick={checkTap}>Check ✓</button>}
           </>
         )}
-        {locked && q.type !== "tap_build" && (
-          <div className={`feedback ${selected===correct?"fb-ok":"fb-no"}`}>
-            <div className="fb-icon">{selected===correct?"✓":"✗"}</div>
-            <div className="fb-text">
-              {selected===correct?"Correct!":
-                q.type==="article"?<span>The correct article is <strong>{correct}</strong>.</span>:
-                q.type==="fill"?<span>The missing word is <strong>{correct}</strong>.</span>:
-                <span>The correct answer is <strong>{correct}</strong>.</span>}
-              <div className="fb-exp">{q.explanation}</div>
+
+        {locked && (
+          <>
+            <div className={`feedback ${isCorrect?"fb-ok":"fb-no"}`}>
+              <div className="fb-icon">{isCorrect?"✓":"✗"}</div>
+              <div className="fb-text">
+                {isCorrect ? "Correct!" : q.type === "tap_build" ? <span>Incorrect — correct answer: <strong>{q.correct.join(" ")}</strong></span> : q.type === "article" ? <span>The correct article is <strong>{correct}</strong>.</span> : q.type === "fill" ? <span>The missing word is <strong>{correct}</strong>.</span> : <span>The correct answer is <strong>{correct}</strong>.</span>}
+                <div className="fb-exp">{q.explanation}</div>
+              </div>
             </div>
-          </div>
+            <button className="btn btn-primary next-btn" onClick={goNext}>Next →</button>
+          </>
         )}
       </div>
     </div>
@@ -984,35 +1167,40 @@ function LessonRunner({ lesson, unit, mode, user, onComplete, onBack }) {
     return lesson?.questions || [];
   }, []);
 
-  const [idx, setIdx] = useState(-1); // -1 = intro
+  const [idx, setIdx] = useState(-1);
   const [results, setResults] = useState([]);
   const [xpEarned, setXpEarned] = useState(0);
+  const [answerStreak, setAnswerStreak] = useState(0);
+  const [bestAnswerStreak, setBestAnswerStreak] = useState(0);
   const [done, setDone] = useState(false);
   const [toast, setToast] = useState(null);
   const toastRef = useRef(null);
 
   const showIntro = mode !== "puzzle" && mode !== "review" && lesson?.intro;
 
-  const handleAnswer = useCallback((correct, answer) => {
-    const xp = correct ? 10 : 2;
+  const handleAnswer = useCallback((correct, answer, q) => {
+    const nextStreak = correct ? answerStreak + 1 : 0;
+    const streakBonus = correct && [3,5,10].includes(nextStreak) ? nextStreak * 2 : 0;
+    const xp = (correct ? 10 : 2) + streakBonus;
+    setAnswerStreak(nextStreak);
+    setBestAnswerStreak(b => Math.max(b, nextStreak));
     setXpEarned(e => e + xp);
     setResults(r => [...r, correct]);
-    if (correct) SFX.xp(); 
+    if (streakBonus > 0) SFX.streak(); else if (correct) SFX.xp();
     setToast(xp);
     if (toastRef.current) clearTimeout(toastRef.current);
     toastRef.current = setTimeout(()=>setToast(null), 2000);
-    setTimeout(() => {
-      if (idx+1 >= questions.length) {
-        const all = results.length+1 === questions.length && correct && results.every(Boolean);
-        const bonus = all ? (mode==="puzzle"?50:25) : 0;
-        if (bonus > 0) SFX.streak();
-        setXpEarned(e => e+bonus);
-        setDone(true);
-      } else {
-        setIdx(i=>i+1);
-      }
-    }, 1600);
-  }, [idx, questions.length, results, mode]);
+
+    if (idx+1 >= questions.length) {
+      const all = results.length+1 === questions.length && correct && results.every(Boolean);
+      const bonus = all ? (mode==="puzzle"?50:25) : 0;
+      if (bonus > 0) SFX.streak();
+      setXpEarned(e => e+bonus);
+      setDone(true);
+    } else {
+      setIdx(i=>i+1);
+    }
+  }, [idx, questions.length, results, mode, answerStreak]);
 
   const correctCount = results.filter(Boolean).length;
 
@@ -1027,9 +1215,9 @@ function LessonRunner({ lesson, unit, mode, user, onComplete, onBack }) {
           <div className="lc-stats">
             <div className="lcs"><div className="lcs-val">{correctCount}/{questions.length}</div><div className="lcs-lbl">Correct</div></div>
             <div className="lcs"><div className="lcs-val" style={{color:"var(--gold)"}}>+{xpEarned}</div><div className="lcs-lbl">XP Earned</div></div>
-            <div className="lcs"><div className="lcs-val">{Math.round(correctCount/questions.length*100)}%</div><div className="lcs-lbl">Accuracy</div></div>
+            <div className="lcs"><div className="lcs-val">🔥 {bestAnswerStreak}</div><div className="lcs-lbl">Best Streak</div></div>
           </div>
-          <button className="btn btn-primary btn-lg" onClick={()=>onComplete(xpEarned,correctCount,questions.length,mode,lesson?.id,correctCount===questions.length)}>
+          <button className="btn btn-primary btn-lg" onClick={()=>onComplete(xpEarned,correctCount,questions.length,mode,lesson?.id,perfect)}>
             Back to Dashboard
           </button>
         </div>
@@ -1045,120 +1233,166 @@ function LessonRunner({ lesson, unit, mode, user, onComplete, onBack }) {
     <div className="lesson-page">
       {toast && <XpToast xp={toast} />}
       <div className="lesson-hdr">
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-          <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:"var(--muted)",fontSize:20}}>←</button>
-          <div>
-            <div className="lesson-title">{mode==="puzzle"?"🧩 Daily Puzzle":mode==="review"?"⚡ Review Mode":`${unit?.icon||"📖"} ${lesson?.title||"Lesson"}`}</div>
-            <div className="lesson-sub">{mode==="puzzle"?"Today's challenge":mode==="review"?"Practice your weak spots!":unit?.title}</div>
-          </div>
-        </div>
-        {idx >= 0 && (
-          <div className="progress-row">
-            <div className="progress-bar"><div className="progress-fill" style={{width:pct+"%"}}/></div>
-            <span className="q-num">{currentStep+1}/{totalSteps}</span>
-          </div>
-        )}
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{marginBottom:14}}>← Back</button>
+        <div className="lesson-title">{mode==="puzzle"?"🧩 Daily Puzzle":mode==="review"?"⚡ Review Session":`${unit?.icon||"📖"} ${lesson?.title}`}</div>
+        <div className="lesson-sub">{mode==="puzzle"?"Today's challenge":mode==="review"?"Practice what gave you trouble":"Learn, answer, then press Next when you're ready."}</div>
       </div>
 
-      {idx === -1 && showIntro && lesson.intro ? (
+      {showIntro && idx === -1 ? (
         <div>
           <div className="intro-card">
-            <div className="intro-icon">🇩🇪</div>
+            <div className="intro-icon">{unit?.icon}</div>
             <div className="intro-title">{lesson.intro.title}</div>
             <div className="intro-body">{lesson.intro.body}</div>
-            {lesson.intro.tip && <div className="intro-tip">{lesson.intro.tip}</div>}
+            <div className="intro-tip">{lesson.intro.tip}</div>
           </div>
-          <button className="btn btn-primary btn-lg" style={{width:"100%"}} onClick={()=>setIdx(0)}>
-            Start Lesson →
-          </button>
+          <button className="btn btn-primary btn-lg" style={{width:"100%"}} onClick={()=>setIdx(0)}>Start Lesson →</button>
         </div>
       ) : (
-        questions[idx >= 0 ? idx : 0] && (
-          <QuestionRenderer
-            key={idx}
-            q={questions[idx >= 0 ? idx : 0]}
-            onAnswer={handleAnswer}
-          />
-        )
+        <>
+          {idx === -1 && setIdx(0)}
+          <div className="progress-row">
+            <div className="progress-bar"><div className="progress-fill" style={{width:pct+"%"}}/></div>
+            <span className="q-num">{idx+1}/{totalSteps}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10}}>
+            <div className="badge">🔥 Correct Streak: {answerStreak}</div>
+            {[3,5,10].includes(answerStreak) && <div className="badge" style={{background:"var(--green)",color:"#fff"}}>Streak Bonus!</div>}
+          </div>
+          {questions[idx] && <QuestionRenderer key={questions[idx].id} q={questions[idx]} onAnswer={handleAnswer} />}
+        </>
       )}
     </div>
   );
 }
 
-// ─── ROADMAP ─────────────────────────────────────────────────────────────────
+// ─── SOCIAL / SHOP / PROFILE ────────────────────────────────────────────────
 
-function Roadmap({ user, onStartLesson, onBack }) {
-  const [expanded, setExpanded] = useState(1);
-  const completedLessons = user.completedLessons || {};
-  const { level } = calcLevel(user.xp || 0);
-
-  // Unlock logic: unit N is unlocked if all lessons in unit N-1 are done
-  const unitUnlocked = unitId => {
-    if (unitId === 1) return true;
-    const prevUnit = UNITS.find(u=>u.id===unitId-1);
-    if (!prevUnit) return true;
-    return prevUnit.lessons.every(l=>completedLessons[l.id]);
+function getPlayerRows(user) {
+  const av = AVATARS.find(a=>a.id===user.avatar);
+  const me = {
+    username: user.username || "you",
+    displayName: user.displayName || "You",
+    avatar: user.avatar || "bear",
+    xp: user.xp || 0,
+    weeklyXp: user.weeklyXp || Math.floor((user.xp||0) * 0.18),
+    streak: user.streak || 0,
+    title: user.equipped?.title || "New Learner",
+    border: user.equipped?.border || "Starter Frame",
+    isMe: true,
   };
+  return [...MOCK_PLAYERS, me].sort((a,b)=>(b.weeklyXp||0)-(a.weeklyXp||0));
+}
 
-  const lessonUnlocked = (unit, lesson) => {
-    if (!unitUnlocked(unit.id)) return false;
-    const idx = unit.lessons.findIndex(l=>l.id===lesson.id);
-    if (idx===0) return true;
-    return !!completedLessons[unit.lessons[idx-1].id];
+function SocialPage({ user, onNavigate, onUpdate }) {
+  const rows = getPlayerRows(user);
+  const league = getWeeklyLeague(user.xp || 0);
+  const friends = MOCK_PLAYERS.slice(0,4);
+  const sendGift = (friend) => {
+    if ((user.marks || 0) < 25) return alert("You need 25 Marks to send a gift.");
+    const stats = { ...(user.stats || {}), giftsSent: (user.stats?.giftsSent || 0) + 1 };
+    onUpdate({ marks: (user.marks || 0) - 25, stats });
+    alert(`Sent ${friend.displayName} a small Sprak gift! 🎁`);
   };
-
-  const lessonStatus = l => completedLessons[l.id] ? "done" : "current";
-
   return (
-    <div className="roadmap">
-      <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:"var(--muted)",fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:6}}>← Back to Dashboard</button>
-      <div className="roadmap-title">🗺️ Learning Roadmap</div>
-      <div className="roadmap-sub">Your structured path to German fluency</div>
+    <div className="social-page">
+      <div className="page-top">
+        <div><div className="page-title">Social Hub</div><div className="page-sub">Weekly leagues, friends, gifts, and public progress.</div></div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>onNavigate("dashboard")}>← Dashboard</button>
+      </div>
+      <div className="league-card">
+        <div style={{display:"flex",alignItems:"center",gap:14}}><div className="league-icon">{league.icon}</div><div><div className="league-name">{league.name} League</div><div style={{opacity:.8,fontSize:13}}>Earn weekly XP to climb and unlock rewards.</div></div></div>
+        <div className="reset-pill">Resets Monday</div>
+      </div>
+      <div className="social-grid">
+        <div className="panel">
+          <div className="panel-title">🏆 Weekly Leaderboard</div>
+          {rows.map((p,i)=>{
+            const av = AVATARS.find(a=>a.id===p.avatar);
+            return <div key={p.username} className={`rank-row ${p.isMe?"rank-me":""}`}>
+              <div className="rank-num">#{i+1}</div><div className="mini-avatar">{av?.emoji || "🐻"}</div>
+              <div className="row-main"><div className="row-name">{p.displayName} {p.isMe&&"(You)"}</div><div className="row-meta">{p.title} · 🔥 {p.streak} streak · {p.border}</div></div>
+              <div className="row-score">{p.weeklyXp} XP</div>
+            </div>
+          })}
+        </div>
+        <div className="panel">
+          <div className="panel-title">👥 Friends</div>
+          {friends.map(f=>{
+            const av = AVATARS.find(a=>a.id===f.avatar);
+            return <div className="friend-row" key={f.username}>
+              <div className="mini-avatar">{av?.emoji || "🐻"}</div>
+              <div className="row-main"><div className="row-name">{f.displayName}</div><div className="row-meta">Lv {calcLevel(f.xp).level} · {f.title}</div></div>
+              <button className="btn btn-gold btn-sm" onClick={()=>sendGift(f)}>🎁 25</button>
+            </div>
+          })}
+          <div className="privacy" style={{marginTop:14,marginBottom:0}}><span>💡</span><span>Prototype note: friends are demo players for now. Real friend requests need cloud saves/Firestore later.</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {UNITS.map(unit => {
-        const unlocked = unitUnlocked(unit.id);
-        const allDone = unit.lessons.every(l=>completedLessons[l.id]);
-        const open = expanded === unit.id;
+function ShopPage({ user, onNavigate, onUpdate }) {
+  const items = getShopRotation();
+  const owned = new Set(user.inventory || []);
+  const buy = item => {
+    if (owned.has(item.id)) return;
+    if ((user.marks || 0) < item.price) return alert(`Not enough ${CURRENCY.name}.`);
+    const inventory = [...(user.inventory || []), item.id];
+    const equipped = { ...(user.equipped || {}) };
+    if (["title","border","banner","decoration"].includes(item.type)) equipped[item.type] = item.name;
+    if (item.type === "avatar") equipped.decoration = item.name;
+    onUpdate({ marks: (user.marks || 0) - item.price, inventory, equipped });
+    SFX.streak();
+  };
+  return (
+    <div className="shop-page">
+      <div className="page-top">
+        <div><div className="page-title">Daily Shop</div><div className="page-sub">Rotating cosmetics and profile items. Inventory changes every day.</div></div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}><div className="currency-pill">{CURRENCY.icon} {user.marks || 0} {CURRENCY.name}</div><button className="btn btn-ghost btn-sm" onClick={()=>onNavigate("dashboard")}>← Dashboard</button></div>
+      </div>
+      <div className="shop-grid">
+        {items.map(item=><div key={item.id} className={`shop-card ${owned.has(item.id)?"owned":""}`}>
+          <div className="shop-icon">{item.icon}</div><div className="shop-name">{item.name}</div><div className="shop-rarity">{item.rarity} · {item.type}</div><div className="shop-price">{CURRENCY.icon} {item.price}</div>
+          <button className="btn btn-primary btn-full" disabled={owned.has(item.id)} onClick={()=>buy(item)}>{owned.has(item.id)?"Owned ✓":"Buy"}</button>
+        </div>)}
+      </div>
+    </div>
+  );
+}
 
-        return (
-          <div className="unit-row" key={unit.id}>
-            <div className="unit-card">
-              <div className="unit-head" style={{background:unlocked?unit.color:"#aaa"}}
-                onClick={()=>unlocked&&setExpanded(open?null:unit.id)}>
-                <div className="unit-icon-box">{unit.icon}</div>
-                <div className="unit-text">
-                  <div className="unit-name">Unit {unit.id}: {unit.title}</div>
-                  <div className="unit-desc">{unit.description}</div>
-                </div>
-                <div className="unit-status">{!unlocked?"🔒":allDone?"✅":open?"▲":"▼"}</div>
-              </div>
-              {open && unlocked && (
-                <div className="lessons-list">
-                  {unit.lessons.map(lesson => {
-                    const done = !!completedLessons[lesson.id];
-                    const unlk = lessonUnlocked(unit, lesson);
-                    const status = done?"done":unlk?"current":"locked";
-                    return (
-                      <div key={lesson.id}
-                        className={`lesson-row ${status==="locked"?"lesson-locked":""}`}
-                        onClick={()=>unlk&&onStartLesson(unit,lesson)}>
-                        <div className={`lesson-dot ${status}`}>
-                          {status==="done"?"✓":status==="current"?"→":"🔒"}
-                        </div>
-                        <div className="lesson-info">
-                          <div className="lesson-name">{lesson.title}</div>
-                          <div className="lesson-meta">{lesson.questions.length} questions · {status==="done"?"Completed":"Tap to start"}</div>
-                        </div>
-                        <div className="lesson-xp">+{lesson.xpReward} XP</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+function ProfilePage({ user, onNavigate, onUpdate }) {
+  const av = AVATARS.find(a=>a.id===user.avatar);
+  const { level } = calcLevel(user.xp || 0);
+  const stats = user.stats || {};
+  const ownedItems = SHOP_ITEMS.filter(i => (user.inventory || []).includes(i.id));
+  return (
+    <div className="profile-page">
+      <div className="page-top"><div><div className="page-title">Public Profile</div><div className="page-sub">What other Sprak players would see.</div></div><button className="btn btn-ghost btn-sm" onClick={()=>onNavigate("dashboard")}>← Dashboard</button></div>
+      <div className="profile-card">
+        <div className="profile-inner">
+          <div className="profile-big-av">{av?.emoji || "🐻"}</div>
+          <div style={{flex:1}}>
+            <div className="profile-name">{user.displayName}</div>
+            <div style={{opacity:.8}}>@{user.username}</div>
+            <div className="profile-title">{user.equipped?.title || "New Learner"}</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:13,opacity:.9}}>
+              <span>⭐ Level {level}</span><span>🔥 {user.streak || 0} streak</span><span>{CURRENCY.icon} {user.marks || 0}</span><span>🏆 {getWeeklyLeague(user.xp||0).name}</span>
             </div>
           </div>
-        );
-      })}
+        </div>
+      </div>
+      <div className="stats-row" style={{marginTop:18}}>
+        <div className="stat-card"><div className="stat-val">{stats.lessonsCompleted||0}</div><div className="stat-lbl">Lessons</div></div>
+        <div className="stat-card"><div className="stat-val">{stats.totalAnswered||0}</div><div className="stat-lbl">Questions</div></div>
+        <div className="stat-card"><div className="stat-val">{stats.perfectLessons||0}</div><div className="stat-lbl">Perfect</div></div>
+        <div className="stat-card"><div className="stat-val">{stats.giftsSent||0}</div><div className="stat-lbl">Gifts Sent</div></div>
+      </div>
+      <div className="panel">
+        <div className="panel-title">🎨 Cosmetics</div>
+        {ownedItems.length === 0 ? <div className="privacy"><span>🛍️</span><span>No cosmetics yet. Visit the Daily Shop and spend Marks to customize your profile.</span></div> : <div className="cosmetic-grid">{ownedItems.map(i=><div key={i.id} className="cosmetic-card"><div className="shop-icon" style={{textAlign:"left",fontSize:28}}>{i.icon}</div><div className="cosmetic-type">{i.type} · {i.rarity}</div><div className="cosmetic-name">{i.name}</div></div>)}</div>}
+      </div>
     </div>
   );
 }
@@ -1193,7 +1427,7 @@ function Dashboard({ user, onNavigate }) {
 
       <div className="stats-row">
         <div className="stat-card"><div className="stat-val">🔥 {user.streak||0}</div><div className="stat-lbl">Streak</div></div>
-        <div className="stat-card"><div className="stat-val">{stats.lessonsCompleted||0}</div><div className="stat-lbl">Lessons</div></div>
+        <div className="stat-card"><div className="stat-val">{CURRENCY.icon} {user.marks||0}</div><div className="stat-lbl">Marks</div></div>
         <div className="stat-card"><div className="stat-val">{acc}%</div><div className="stat-lbl">Accuracy</div></div>
         <div className="stat-card"><div className="stat-val">{stats.totalAnswered||0}</div><div className="stat-lbl">Questions</div></div>
       </div>
@@ -1216,6 +1450,24 @@ function Dashboard({ user, onNavigate }) {
           <div className="action-title">Review</div>
           <div className="action-desc">{wrongCount>0?`${wrongCount} questions to practice`:"Complete lessons first"}</div>
           {wrongCount>0 ? <div className="badge">Fix {wrongCount}</div> : <div className="badge-done">All good!</div>}
+        </div>
+        <div className="action-card" onClick={()=>onNavigate("social")}>
+          <div className="action-icon">🏆</div>
+          <div className="action-title">Social Hub</div>
+          <div className="action-desc">Leaderboards, friends, and weekly leagues</div>
+          <div className="badge">{getWeeklyLeague(user.xp||0).name}</div>
+        </div>
+        <div className="action-card" onClick={()=>onNavigate("shop")}>
+          <div className="action-icon">🛍️</div>
+          <div className="action-title">Daily Shop</div>
+          <div className="action-desc">Rotating cosmetics and profile items</div>
+          <div className="badge">{CURRENCY.icon} Spend Marks</div>
+        </div>
+        <div className="action-card" onClick={()=>onNavigate("profile")}>
+          <div className="action-icon">🎨</div>
+          <div className="action-title">Profile</div>
+          <div className="action-desc">Public profile and cosmetics</div>
+          <div className="badge">Customize</div>
         </div>
       </div>
 
@@ -1305,7 +1557,8 @@ export default function App() {
     const completedLessons = { ...(user.completedLessons||{}) };
     if (lessonId && mode!=="puzzle" && mode!=="review") completedLessons[lessonId] = true;
 
-    updateUser({ xp:newXp, stats, streak, lastActiveDate:today, dailyCompletions:daily, completedLessons });
+    const marksEarned = Math.max(10, Math.round(xpEarned / 2)) + (perfect ? 25 : 0);
+    updateUser({ xp:newXp, weeklyXp:(user.weeklyXp||0)+xpEarned, marks:(user.marks||0)+marksEarned, stats, streak, lastActiveDate:today, dailyCompletions:daily, completedLessons });
     setActiveLesson(null);
     if (newLvl > prevLvl) setLevelUp(newLvl);
     else nav("dashboard");
@@ -1338,6 +1591,9 @@ export default function App() {
       {page==="login" && <Login onNavigate={nav} onLogin={handleLogin} />}
       {page==="quiz" && <PlacementQuiz onComplete={handlePlacementComplete} />}
       {page==="dashboard" && user && <Dashboard user={user} onNavigate={nav} />}
+      {page==="social" && user && <SocialPage user={user} onNavigate={nav} onUpdate={updateUser} />}
+      {page==="shop" && user && <ShopPage user={user} onNavigate={nav} onUpdate={updateUser} />}
+      {page==="profile" && user && <ProfilePage user={user} onNavigate={nav} onUpdate={updateUser} />}
 
       {page==="roadmap" && user && (
         <Roadmap user={user} onBack={()=>nav("dashboard")}
