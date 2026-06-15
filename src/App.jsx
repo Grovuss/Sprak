@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, limit, getDocs, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 
 const firebaseConfig = { apiKey:"AIzaSyBejVYv-lIcdnzo58GG7wDclfvr2hgKse0", authDomain:"sprak-f7649.firebaseapp.com", projectId:"sprak-f7649", storageBucket:"sprak-f7649.firebasestorage.app", messagingSenderId:"589172963892", appId:"1:589172963892:web:82373424a3d71d1190a861" };
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
 // ─── SOUND ENGINE ─────────────────────────────────────────────────────────────
 const AudioCtx = typeof AudioContext !== "undefined" ? AudioContext : (typeof webkitAudioContext !== "undefined" ? webkitAudioContext : null);
@@ -415,11 +417,47 @@ function checkAchievements(user) {
   return [...earned];
 }
 
-function getGameData(uid) { try { return JSON.parse(localStorage.getItem(`sprak_game_${uid}`) || "null"); } catch { return null; } }
-function saveGameData(uid, data) { localStorage.setItem(`sprak_game_${uid}`, JSON.stringify(data)); }
+function getLocalGameData(uid) { try { return JSON.parse(localStorage.getItem(`sprak_game_${uid}`) || "null"); } catch { return null; } }
+function saveLocalGameData(uid, data) { try { localStorage.setItem(`sprak_game_${uid}`, JSON.stringify(data)); } catch {} }
+function cleanForFirestore(data) { return JSON.parse(JSON.stringify(data || {})); }
+function publicProfileFromData(data) {
+  return {
+    uid: data.uid,
+    username: data.username || "learner",
+    usernameLower: (data.username || "learner").toLowerCase(),
+    displayName: data.displayName || "Learner",
+    displayNameLower: (data.displayName || "Learner").toLowerCase(),
+    avatar: data.avatar || "bear",
+    xp: data.xp || 0,
+    weeklyXp: data.weeklyXp || 0,
+    streak: data.streak || 0,
+    marks: data.marks || 0,
+    achievements: data.achievements || [],
+    stats: data.stats || {},
+    friends: data.friends || [],
+    incomingFriendRequests: data.incomingFriendRequests || [],
+    sentFriendRequests: data.sentFriendRequests || [],
+    equipped: data.equipped || {},
+    inventory: data.inventory || [],
+    updatedAt: Date.now(),
+  };
+}
+async function loadCloudGameData(uid) {
+  try { const snap = await getDoc(doc(db, "users", uid)); return snap.exists() ? snap.data() : null; }
+  catch (err) { console.warn("Cloud load failed:", err); return null; }
+}
+async function saveCloudGameData(uid, data) {
+  try { await setDoc(doc(db, "users", uid), cleanForFirestore({ ...data, ...publicProfileFromData(data), lastCloudSave: Date.now() }), { merge: true }); }
+  catch (err) { console.warn("Cloud save failed:", err); }
+}
+function getGameData(uid) { return getLocalGameData(uid); }
+function saveGameData(uid, data) { saveLocalGameData(uid, data); if (uid) saveCloudGameData(uid, data); }
 function makeDefaultGameData(uid, extra = {}) {
-  return { uid, username: "", displayName: "", avatar: "bear", xp: 0, weeklyXp: 0, marks: 250, streak: 0, lastActiveDate: null,
-    achievements: [], stats: { lessonsCompleted: 0, puzzlesCompleted: 0, totalAnswered: 0, totalCorrect: 0, perfectLessons: 0, giftsSent: 0 },
+  const baseName = extra.displayName || "Learner";
+  const baseUsername = (extra.username || baseName || "learner").toString().replace(/[^a-zA-Z0-9_]/g, "").slice(0,18) || "learner";
+  return { uid, username: baseUsername, displayName: baseName, avatar: "bear", xp: 0, weeklyXp: 0, marks: 250, streak: 0, lastActiveDate: null,
+    friends: [], incomingFriendRequests: [], sentFriendRequests: [],
+    achievements: [], stats: { lessonsCompleted: 0, puzzlesCompleted: 0, totalAnswered: 0, totalCorrect: 0, perfectLessons: 0, giftsSent: 0, giftsReceived: 0 },
     inventory: [], equipped: { title: "New Learner", border: "Starter Frame", banner: "Sprak Starter", decoration: "" },
     completedLessons: {}, wrongAnswers: {}, dailyCompletions: {}, createdAt: Date.now(), ...extra };
 }
@@ -914,9 +952,9 @@ function Login({ onNavigate, onLogin }) {
   const [loading, setLoading] = useState(false);
   const [gloading, setGloading] = useState(false);
 
-  const finish = uid => {
-    let gd = getGameData(uid);
-    if (!gd) { gd = makeDefaultGameData(uid,{displayName:"Learner",username:"learner"}); saveGameData(uid,gd); }
+  const finish = async (uid, fallbackName="Learner") => {
+    let gd = await loadCloudGameData(uid) || getGameData(uid);
+    if (!gd) { gd = makeDefaultGameData(uid,{displayName:fallbackName,username:fallbackName.toLowerCase().replace(/[^a-z0-9_]/g,"") || "learner"}); saveGameData(uid,gd); }
     const today = getDailyKey();
     if (gd.lastActiveDate !== today) {
       const d = new Date(); d.setDate(d.getDate()-1);
@@ -924,6 +962,7 @@ function Login({ onNavigate, onLogin }) {
       if (gd.lastActiveDate !== yest) gd.streak = 0;
       saveGameData(uid,gd);
     }
+    saveLocalGameData(uid, gd);
     onLogin(gd);
   };
 
@@ -931,14 +970,14 @@ function Login({ onNavigate, onLogin }) {
     e.preventDefault();
     if (!form.email.trim()||!form.password) { setErr("Please fill in all fields."); return; }
     setErr(""); setLoading(true);
-    try { const cred = await signInWithEmailAndPassword(auth,form.email.trim(),form.password); finish(cred.user.uid); }
+    try { const cred = await signInWithEmailAndPassword(auth,form.email.trim(),form.password); await finish(cred.user.uid, form.email.split("@")[0]); }
     catch(err) { setErr(firebaseErr(err.code)); }
     finally { setLoading(false); }
   };
 
   const guest = async () => {
     setErr(""); setGloading(true);
-    try { const cred = await signInAnonymously(auth); finish(cred.user.uid); }
+    try { const cred = await signInAnonymously(auth); await finish(cred.user.uid, "Guest"); }
     catch(err) { setErr(firebaseErr(err.code)); }
     finally { setGloading(false); }
   };
@@ -1266,67 +1305,225 @@ function LessonRunner({ lesson, unit, mode, user, onComplete, onBack }) {
   );
 }
 
-// ─── SOCIAL / SHOP / PROFILE ────────────────────────────────────────────────
+// ─── ROADMAP ────────────────────────────────────────────────────────────────
 
-function getPlayerRows(user) {
-  const av = AVATARS.find(a=>a.id===user.avatar);
-  const me = {
-    username: user.username || "you",
-    displayName: user.displayName || "You",
-    avatar: user.avatar || "bear",
-    xp: user.xp || 0,
-    weeklyXp: user.weeklyXp || Math.floor((user.xp||0) * 0.18),
-    streak: user.streak || 0,
-    title: user.equipped?.title || "New Learner",
-    border: user.equipped?.border || "Starter Frame",
-    isMe: true,
-  };
-  return [...MOCK_PLAYERS, me].sort((a,b)=>(b.weeklyXp||0)-(a.weeklyXp||0));
+function Roadmap({ user, onBack, onStartLesson }) {
+  const completed = user.completedLessons || {};
+  const completedCount = Object.keys(completed).filter(k => completed[k]).length;
+
+  function unitUnlocked(unitIndex) {
+    if (unitIndex === 0) return true;
+    const previous = UNITS[unitIndex - 1];
+    return previous.lessons.every(l => completed[l.id]);
+  }
+
+  function lessonUnlocked(unitIndex, lessonIndex) {
+    if (!unitUnlocked(unitIndex)) return false;
+    if (lessonIndex === 0) return true;
+    return !!completed[UNITS[unitIndex].lessons[lessonIndex - 1].id];
+  }
+
+  return (
+    <div className="roadmap">
+      <button className="btn btn-ghost btn-sm" onClick={onBack} style={{marginBottom:18}}>← Dashboard</button>
+      <div className="roadmap-title">Sprak Roadmap</div>
+      <div className="roadmap-sub">Complete lessons, unlock new units, and turn German into a long-term adventure. {completedCount} lessons completed.</div>
+      {UNITS.map((unit, unitIndex) => {
+        const unlocked = unitUnlocked(unitIndex);
+        const unitDone = unit.lessons.every(l => completed[l.id]);
+        return (
+          <div className="unit-row" key={unit.id}>
+            <div className="unit-card">
+              <div className={`unit-head ${!unlocked ? "locked" : ""}`} style={{background: unit.color || "var(--green)"}}>
+                <div className="unit-icon-box">{unit.icon}</div>
+                <div className="unit-text">
+                  <div className="unit-name">Unit {unit.id}: {unit.title}</div>
+                  <div className="unit-desc">{unit.description}</div>
+                </div>
+                <div className="unit-status">{unitDone ? "✅" : unlocked ? "▶️" : "🔒"}</div>
+              </div>
+              <div className="lessons-list">
+                {unit.lessons.map((lesson, lessonIndex) => {
+                  const lDone = !!completed[lesson.id];
+                  const lUnlocked = lessonUnlocked(unitIndex, lessonIndex);
+                  return (
+                    <div key={lesson.id} className={`lesson-row ${!lUnlocked ? "lesson-locked" : ""}`} onClick={() => lUnlocked && onStartLesson(unit, lesson)}>
+                      <div className={`lesson-dot ${lDone ? "done" : lUnlocked ? "current" : "locked"}`}>{lDone ? "✓" : lUnlocked ? "▶" : "🔒"}</div>
+                      <div className="lesson-info">
+                        <div className="lesson-name">{lesson.title}</div>
+                        <div className="lesson-meta">{lesson.questions.length} questions · {lesson.intro?.title || "German practice"}</div>
+                      </div>
+                      <div className="lesson-xp">+{lesson.xpReward || 30} XP</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-function SocialPage({ user, onNavigate, onUpdate }) {
-  const rows = getPlayerRows(user);
+// ─── SOCIAL / SHOP / PROFILE ────────────────────────────────────────────────
+
+function leagueRowsFromPlayers(players, user) {
+  const byUid = new Map();
+  [...(players || []), publicProfileFromData(user)].forEach(p => byUid.set(p.uid || p.username, p));
+  return [...byUid.values()].sort((a,b)=>(b.weeklyXp||0)-(a.weeklyXp||0));
+}
+
+function SocialPage({ user, onNavigate, onUpdate, currentUid }) {
+  const [players, setPlayers] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [msg, setMsg] = useState("");
+
   const league = getWeeklyLeague(user.xp || 0);
-  const friends = MOCK_PLAYERS.slice(0,4);
-  const sendGift = (friend) => {
+
+  const refreshSocial = useCallback(async () => {
+    try {
+      const qTop = query(collection(db, "users"), orderBy("weeklyXp", "desc"), limit(25));
+      const topSnap = await getDocs(qTop);
+      setPlayers(topSnap.docs.map(d => d.data()));
+
+      const friendIds = user.friends || [];
+      if (friendIds.length > 0) {
+        const friendDocs = await Promise.all(friendIds.slice(0, 20).map(uid => getDoc(doc(db, "users", uid))));
+        setFriends(friendDocs.filter(d => d.exists()).map(d => d.data()));
+      } else setFriends([]);
+
+      const requestIds = user.incomingFriendRequests || [];
+      if (requestIds.length > 0) {
+        const reqDocs = await Promise.all(requestIds.slice(0, 20).map(uid => getDoc(doc(db, "users", uid))));
+        setRequests(reqDocs.filter(d => d.exists()).map(d => d.data()));
+      } else setRequests([]);
+    } catch (err) {
+      console.warn(err);
+      setMsg("Could not load cloud social data. Check Firestore rules in Firebase.");
+    }
+  }, [user.friends, user.incomingFriendRequests, user.xp]);
+
+  useEffect(() => { refreshSocial(); }, [refreshSocial]);
+
+  const runSearch = async (e) => {
+    e?.preventDefault?.();
+    const term = search.trim().toLowerCase().replace(/^@/, "");
+    if (!term) { setSearchResults([]); return; }
+    setLoadingSearch(true); setMsg("");
+    try {
+      const qUsers = query(collection(db, "users"), where("usernameLower", ">=", term), where("usernameLower", "<=", term + "\uf8ff"), limit(10));
+      const snap = await getDocs(qUsers);
+      setSearchResults(snap.docs.map(d => d.data()).filter(p => p.uid !== currentUid));
+    } catch (err) {
+      console.warn(err);
+      setMsg("Search failed. Firestore may need an index/rules update.");
+    } finally { setLoadingSearch(false); }
+  };
+
+  const addFriend = async (target) => {
+    if (!target?.uid || target.uid === currentUid) return;
+    setMsg("");
+    try {
+      await updateDoc(doc(db, "users", currentUid), { sentFriendRequests: arrayUnion(target.uid) });
+      await updateDoc(doc(db, "users", target.uid), { incomingFriendRequests: arrayUnion(currentUid) });
+      const sentFriendRequests = [...new Set([...(user.sentFriendRequests || []), target.uid])];
+      onUpdate({ sentFriendRequests });
+      setMsg(`Friend request sent to @${target.username}.`);
+    } catch (err) { console.warn(err); setMsg("Could not send friend request. Check Firestore rules."); }
+  };
+
+  const acceptFriend = async (target) => {
+    if (!target?.uid) return;
+    try {
+      await updateDoc(doc(db, "users", currentUid), { friends: arrayUnion(target.uid), incomingFriendRequests: arrayRemove(target.uid) });
+      await updateDoc(doc(db, "users", target.uid), { friends: arrayUnion(currentUid), sentFriendRequests: arrayRemove(currentUid) });
+      const friendsNew = [...new Set([...(user.friends || []), target.uid])];
+      const incoming = (user.incomingFriendRequests || []).filter(id => id !== target.uid);
+      onUpdate({ friends: friendsNew, incomingFriendRequests: incoming });
+      setRequests(reqs => reqs.filter(r => r.uid !== target.uid));
+      setMsg(`You and @${target.username} are now friends.`);
+    } catch (err) { console.warn(err); setMsg("Could not accept request. Check Firestore rules."); }
+  };
+
+  const sendGift = async (friend) => {
     if ((user.marks || 0) < 25) return alert("You need 25 Marks to send a gift.");
+    try {
+      await updateDoc(doc(db, "users", friend.uid), { marks: (friend.marks || 0) + 25, "stats.giftsReceived": (friend.stats?.giftsReceived || 0) + 1 });
+    } catch (err) { console.warn("Gift cloud update failed", err); }
     const stats = { ...(user.stats || {}), giftsSent: (user.stats?.giftsSent || 0) + 1 };
     onUpdate({ marks: (user.marks || 0) - 25, stats });
-    alert(`Sent ${friend.displayName} a small Sprak gift! 🎁`);
+    alert(`Sent @${friend.username} 25 Marks! 🎁`);
   };
+
+  const rows = leagueRowsFromPlayers(players, user);
+  const friendIds = new Set(user.friends || []);
+  const sentIds = new Set(user.sentFriendRequests || []);
+
   return (
     <div className="social-page">
       <div className="page-top">
-        <div><div className="page-title">Social Hub</div><div className="page-sub">Weekly leagues, friends, gifts, and public progress.</div></div>
+        <div><div className="page-title">Social Hub</div><div className="page-sub">Real player search, friends, gifts, weekly leagues, and public progress.</div></div>
         <button className="btn btn-ghost btn-sm" onClick={()=>onNavigate("dashboard")}>← Dashboard</button>
       </div>
+      {msg && <div className="privacy"><span>ℹ️</span><span>{msg}</span></div>}
       <div className="league-card">
         <div style={{display:"flex",alignItems:"center",gap:14}}><div className="league-icon">{league.icon}</div><div><div className="league-name">{league.name} League</div><div style={{opacity:.8,fontSize:13}}>Earn weekly XP to climb and unlock rewards.</div></div></div>
         <div className="reset-pill">Resets Monday</div>
       </div>
       <div className="social-grid">
         <div className="panel">
+          <div className="panel-title">🔎 Find Players</div>
+          <form onSubmit={runSearch} className="search-row">
+            <input className="fi" placeholder="Search @username" value={search} onChange={e=>setSearch(e.target.value)} />
+            <button className="btn btn-primary btn-sm" disabled={loadingSearch}>{loadingSearch ? "..." : "Search"}</button>
+          </form>
+          {searchResults.map(p => {
+            const av = AVATARS.find(a=>a.id===p.avatar);
+            const already = friendIds.has(p.uid);
+            const sent = sentIds.has(p.uid);
+            return <div key={p.uid} className="friend-row">
+              <div className="mini-avatar">{av?.emoji || "🐻"}</div>
+              <div className="row-main"><div className="row-name">{p.displayName}</div><div className="row-meta">@{p.username} · Lv {calcLevel(p.xp||0).level} · 🔥 {p.streak||0}</div></div>
+              <button className="btn btn-gold btn-sm" disabled={already || sent} onClick={()=>addFriend(p)}>{already ? "Friends" : sent ? "Sent" : "Add"}</button>
+            </div>
+          })}
+        </div>
+        <div className="panel">
+          <div className="panel-title">📨 Friend Requests</div>
+          {requests.length === 0 && <div className="row-meta">No incoming requests yet.</div>}
+          {requests.map(p => {
+            const av = AVATARS.find(a=>a.id===p.avatar);
+            return <div key={p.uid} className="friend-row"><div className="mini-avatar">{av?.emoji || "🐻"}</div><div className="row-main"><div className="row-name">{p.displayName}</div><div className="row-meta">@{p.username}</div></div><button className="btn btn-primary btn-sm" onClick={()=>acceptFriend(p)}>Accept</button></div>
+          })}
+        </div>
+        <div className="panel">
           <div className="panel-title">🏆 Weekly Leaderboard</div>
           {rows.map((p,i)=>{
             const av = AVATARS.find(a=>a.id===p.avatar);
-            return <div key={p.username} className={`rank-row ${p.isMe?"rank-me":""}`}>
+            const isMe = p.uid === currentUid;
+            return <div key={p.uid || p.username} className={`rank-row ${isMe?"rank-me":""}`}>
               <div className="rank-num">#{i+1}</div><div className="mini-avatar">{av?.emoji || "🐻"}</div>
-              <div className="row-main"><div className="row-name">{p.displayName} {p.isMe&&"(You)"}</div><div className="row-meta">{p.title} · 🔥 {p.streak} streak · {p.border}</div></div>
-              <div className="row-score">{p.weeklyXp} XP</div>
+              <div className="row-main"><div className="row-name">{p.displayName} {isMe&&"(You)"}</div><div className="row-meta">@{p.username} · 🔥 {p.streak||0} streak</div></div>
+              <div className="row-score">{p.weeklyXp||0} XP</div>
             </div>
           })}
         </div>
         <div className="panel">
           <div className="panel-title">👥 Friends</div>
+          {friends.length === 0 && <div className="privacy" style={{marginBottom:0}}><span>👋</span><span>No friends yet. Search for a username and send a request.</span></div>}
           {friends.map(f=>{
             const av = AVATARS.find(a=>a.id===f.avatar);
-            return <div className="friend-row" key={f.username}>
+            return <div className="friend-row" key={f.uid}>
               <div className="mini-avatar">{av?.emoji || "🐻"}</div>
-              <div className="row-main"><div className="row-name">{f.displayName}</div><div className="row-meta">Lv {calcLevel(f.xp).level} · {f.title}</div></div>
+              <div className="row-main"><div className="row-name">{f.displayName}</div><div className="row-meta">@{f.username} · Lv {calcLevel(f.xp||0).level} · 🔥 {f.streak||0}</div></div>
               <button className="btn btn-gold btn-sm" onClick={()=>sendGift(f)}>🎁 25</button>
             </div>
           })}
-          <div className="privacy" style={{marginTop:14,marginBottom:0}}><span>💡</span><span>Prototype note: friends are demo players for now. Real friend requests need cloud saves/Firestore later.</span></div>
         </div>
       </div>
     </div>
@@ -1497,15 +1694,19 @@ export default function App() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, fbUser => {
-      if (fbUser) {
-        uidRef.current = fbUser.uid;
-        const gd = getGameData(fbUser.uid);
-        if (gd) { setUser(gd); setPage("dashboard"); }
-        else {
-          const fresh = makeDefaultGameData(fbUser.uid, { displayName: fbUser.email?.split("@")[0]||"Learner", username: "learner" });
-          saveGameData(fbUser.uid, fresh); setUser(fresh); setPage("dashboard");
-        }
-      } else { uidRef.current = null; setUser(null); setPage("landing"); }
+      (async () => {
+        if (fbUser) {
+          uidRef.current = fbUser.uid;
+          const cloud = await loadCloudGameData(fbUser.uid);
+          const local = getGameData(fbUser.uid);
+          const gd = cloud || local;
+          if (gd) { saveLocalGameData(fbUser.uid, gd); setUser(gd); setPage("dashboard"); }
+          else {
+            const fresh = makeDefaultGameData(fbUser.uid, { displayName: fbUser.email?.split("@")[0]||"Learner", username: (fbUser.email?.split("@")[0]||"learner") });
+            saveGameData(fbUser.uid, fresh); setUser(fresh); setPage("dashboard");
+          }
+        } else { uidRef.current = null; setUser(null); setPage("landing"); }
+      })();
     });
     return ()=>unsub();
   }, []);
@@ -1591,7 +1792,7 @@ export default function App() {
       {page==="login" && <Login onNavigate={nav} onLogin={handleLogin} />}
       {page==="quiz" && <PlacementQuiz onComplete={handlePlacementComplete} />}
       {page==="dashboard" && user && <Dashboard user={user} onNavigate={nav} />}
-      {page==="social" && user && <SocialPage user={user} onNavigate={nav} onUpdate={updateUser} />}
+      {page==="social" && user && <SocialPage user={user} currentUid={uidRef.current} onNavigate={nav} onUpdate={updateUser} />}
       {page==="shop" && user && <ShopPage user={user} onNavigate={nav} onUpdate={updateUser} />}
       {page==="profile" && user && <ProfilePage user={user} onNavigate={nav} onUpdate={updateUser} />}
 
