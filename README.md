@@ -1,47 +1,47 @@
-# Sprak Site V4
+# Sprak Site V5
 
-This is a Vite + React version of Sprak.
+This is a Vite + React version of Sprak with Firebase Auth and Firestore profile/social data.
 
-## Deploying
+## What's new in V5
 
-1. Upload this folder to GitHub or import it into Vercel.
-2. Vercel settings:
-   - Framework Preset: Vite
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-   - Install Command: `npm install`
-3. In Firebase Console → Authentication → Settings → Authorized domains, add your Vercel domain.
+- Expanded the roadmap to 20 German-learning units.
+- Every unit now has at least 20 core questions.
+- Every unit also gets a Guided Unit Review assignment and an End-of-Unit Checkup boss quiz.
+- Removed the English translation shown underneath German vocabulary cards so translation questions no longer give away the answer.
+- Curriculum is structured more like real beginner/intermediate German learning: greetings, pronunciation, numbers, articles, pronouns, verbs, questions, negation, food, travel, cases, modals, past tense, future, opinions, school/work, health, culture, and fluency practice.
+- Kept the V4 systems: Firestore cloud profiles, usernames/@ handles, social hub, friends, gifts, player search, leaderboard, Marks, shop, cosmetics, lesson feedback, Next button, and correct-answer streaks.
 
-## Important: Firestore setup
+## Local setup
 
-This version uses Firebase Auth **and Firestore** so usernames, profiles, progress, friends, player search, leaderboards, gifts, cosmetics, and Marks save across devices.
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Vercel settings
+
+Framework Preset: `Vite`
+Build Command: `npm run build`
+Output Directory: `dist`
+Install Command: `npm install`
+
+## Firebase setup
 
 In Firebase Console:
 
-1. Go to **Firestore Database**.
-2. Create a database.
-3. Start in production or test mode.
-4. For quick prototype testing, use rules like this:
+1. Enable Authentication.
+2. Enable Email/Password sign-in.
+3. Enable Anonymous sign-in.
+4. Create a Firestore Database in production mode.
+5. Add your Vercel domain in Authentication → Settings → Authorized domains.
 
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
+## Firestore rules
 
-These rules are loose for prototyping. Before a real public launch, tighten them so users can only edit their own profile fields and only write friend requests/gifts in approved ways.
+Use rules that let signed-in users read public profiles, update their own profile, and manage their own friend request/gift data. If you already used the V4 rules, keep them unless you want stricter production rules later.
 
-## What changed in V4
-
-- Fixed the Roadmap white screen by adding the missing Roadmap component.
-- Added Firestore cloud saves.
-- Usernames, @ handles, profiles, XP, Marks, cosmetics, and progress now persist across devices.
-- Added real player search by username.
-- Added friend requests, accepting friends, friends list, and friend gifts.
-- Leaderboard now reads real Firestore users instead of only demo users.

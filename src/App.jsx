@@ -101,271 +101,6036 @@ function getShopRotation() {
   return result;
 }
 
+
 // ─── CURRICULUM ───────────────────────────────────────────────────────────────
-// Each unit has lessons, each lesson has questions
-// Question types: mc (multiple choice), article, tap_build (tap words to build sentence), match (match pairs)
-const UNITS = [
+// Curriculum design notes: units are intentionally short in-session but long on the roadmap.
+// This mirrors modern language apps and classroom/tutor pacing: introduce → recognize → produce → review → checkup.
+// Question types supported: mc, article, fill, tap_build.
+function rotateOptions(options, seed) {
+  const unique = [...new Set(options.filter(Boolean))];
+  if (unique.length <= 1) return unique;
+  let h = 0;
+  for (const c of seed) h = ((h << 5) - h) + c.charCodeAt(0);
+  const shift = Math.abs(h) % unique.length;
+  return unique.slice(shift).concat(unique.slice(0, shift));
+}
+function entryToQuestion(entry, lessonId, idx) {
+  const id = `${lessonId}-q${idx + 1}`;
+  if (entry.kind === "v") return {
+    id, type: "mc", german: entry.german, english: entry.english, category: "Vocabulary",
+    prompt: `What does '${entry.german}' mean?`,
+    options: rotateOptions([entry.english, ...(entry.wrong || [])], id), correct: entry.english,
+    explanation: entry.explanation || `'${entry.german}' means '${entry.english}'.`
+  };
+  if (entry.kind === "c") return {
+    id, type: "mc", category: "Concept Check", prompt: entry.prompt,
+    options: rotateOptions(entry.options || [], id), correct: entry.correct, explanation: entry.explanation
+  };
+  if (entry.kind === "f") return {
+    id, type: "fill", category: "Fill in the Blank", german: entry.german, english: entry.english,
+    blank: entry.blank, options: rotateOptions(entry.options || [], id), explanation: entry.explanation
+  };
+  if (entry.kind === "a") return {
+    id, type: "article", category: "Articles", german: entry.noun, english: entry.english,
+    prompt: `Which article goes with '${entry.noun}' (${entry.english})?`,
+    options: ["der", "die", "das"], correct: entry.article, explanation: entry.explanation
+  };
+  if (entry.kind === "b") return {
+    id, type: "tap_build", category: "Sentence Builder", prompt: entry.prompt,
+    words: rotateOptions([...(entry.correct || []), ...(entry.extra || [])], id), correct: entry.correct, explanation: entry.explanation
+  };
+  return entry;
+}
+function buildLesson(lesson) {
+  return { ...lesson, questions: (lesson.entries || []).map((e, i) => entryToQuestion(e, lesson.id, i)) };
+}
+function cloneForLesson(q, id) {
+  return { ...q, id, options: q.options ? [...q.options] : q.options, words: q.words ? [...q.words] : q.words, correct: Array.isArray(q.correct) ? [...q.correct] : q.correct };
+}
+function withReviewAndCheckup(unit) {
+  const lessons = unit.lessons.map(buildLesson);
+  const coreQuestions = lessons.flatMap(l => l.questions);
+  const reviewQuestions = coreQuestions.slice(0, 10).map((q, i) => cloneForLesson(q, `${unit.id}-review-q${i + 1}`));
+  const checkupQuestions = coreQuestions.slice(0, 15).map((q, i) => cloneForLesson(q, `${unit.id}-checkup-q${i + 1}`));
+  const reviewLesson = {
+    id: `${unit.id}-review`, title: "Guided Unit Review", xpReward: 80,
+    intro: { title: `Review: ${unit.title}`, body: "This review mixes the unit's main ideas before the final checkup. It is designed like a tutor recap: quick recall, then production.", tip: "🔁 Mistakes here are useful. They show what to review before the checkup." },
+    questions: reviewQuestions
+  };
+  const checkupLesson = {
+    id: `${unit.id}-checkup`, title: "End-of-Unit Checkup", xpReward: 140,
+    intro: { title: `Checkup: ${unit.title}`, body: "One bigger quiz for the whole unit. No new teaching here — just prove what stuck.", tip: "🏁 Treat this like a boss lesson. Read carefully, use the feedback, and go for a perfect streak." },
+    questions: checkupQuestions
+  };
+  return { ...unit, lessons: [...lessons, reviewLesson, checkupLesson] };
+}
+const CURRICULUM_SPECS = [
   {
-    id: 1, title: "Greetings & Basics", icon: "👋", color: "#52B788",
-    description: "Start your German journey with everyday greetings and polite phrases.",
-    lessons: [
+    "id": 1,
+    "title": "Starter German",
+    "icon": "👋",
+    "color": "#52B788",
+    "description": "Greetings, classroom basics, and the first survival phrases every beginner needs.",
+    "lessons": [
       {
-        id: "1-1", title: "Saying Hello", xpReward: 30,
-        intro: { title: "Saying Hello in German", body: "Germans greet each other warmly. The most common greeting is 'Hallo' (informal) or 'Guten Tag' (formal, meaning 'Good day'). Let's learn the basics!", tip: "🕐 'Guten Morgen' is used before noon, 'Guten Tag' during the day, 'Guten Abend' in the evening." },
-        questions: [
-          { id:"q1", type:"mc", german:"Hallo", english:"Hello", prompt:"What does 'Hallo' mean?", options:["Hello","Goodbye","Please","Thanks"], correct:"Hello", explanation:"'Hallo' is the standard informal greeting in German — just like 'Hello' in English!" },
-          { id:"q2", type:"mc", prompt:"How do you say 'Good morning' in German?", options:["Guten Morgen","Guten Tag","Guten Abend","Gute Nacht"], correct:"Guten Morgen", explanation:"'Guten Morgen' = Good morning. 'Morgen' means morning." },
-          { id:"q3", type:"mc", german:"Tschüss", english:"Bye", prompt:"What does 'Tschüss' mean?", options:["Hello","See you later","Bye","Good night"], correct:"Bye", explanation:"'Tschüss' is the casual way to say goodbye — perfect for friends and family." },
-          { id:"q4", type:"mc", prompt:"A German colleague greets you formally. What do they say?", options:["Hallo!","Tschüss!","Guten Tag!","Gute Nacht!"], correct:"Guten Tag!", explanation:"'Guten Tag' (Good day) is the standard formal greeting used in professional settings." },
-          { id:"q5", type:"tap_build", prompt:"Build the phrase: 'Good evening'", words:["Guten","Abend","Morgen","Tag"], correct:["Guten","Abend"], explanation:"'Guten Abend' = Good evening. 'Abend' means evening." },
+        "id": "1-1",
+        "title": "Hello & Goodbye",
+        "xpReward": 30,
+        "intro": {
+          "title": "First contact",
+          "body": "Start with greetings you can actually use. This follows the tutor pattern of recognition first, then production.",
+          "tip": "🗣️ Say each answer out loud. German sticks faster when you hear yourself using it."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Hallo",
+            "english": "hello",
+            "wrong": [
+              "goodbye",
+              "please",
+              "thanks"
+            ],
+            "explanation": "Hallo is the everyday informal hello."
+          },
+          {
+            "kind": "v",
+            "german": "Guten Morgen",
+            "english": "good morning",
+            "wrong": [
+              "good evening",
+              "good night",
+              "see you soon"
+            ],
+            "explanation": "Use Guten Morgen before noon."
+          },
+          {
+            "kind": "v",
+            "german": "Guten Tag",
+            "english": "good day",
+            "wrong": [
+              "goodbye",
+              "good night",
+              "thank you"
+            ],
+            "explanation": "Guten Tag is a polite daytime greeting."
+          },
+          {
+            "kind": "v",
+            "german": "Tschüss",
+            "english": "bye",
+            "wrong": [
+              "hello",
+              "please",
+              "morning"
+            ],
+            "explanation": "Tschüss is casual and very common."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Good evening'",
+            "correct": [
+              "Guten",
+              "Abend"
+            ],
+            "extra": [
+              "Morgen",
+              "Tag"
+            ],
+            "explanation": "Guten Abend means good evening."
+          }
         ]
       },
       {
-        id: "1-2", title: "Polite Phrases", xpReward: 30,
-        intro: { title: "Please, Thank You & Sorry", body: "Politeness goes a long way! These phrases are used constantly in German daily life.", tip: "💡 'Bitte' does double duty — it means both 'please' AND 'you're welcome'!" },
-        questions: [
-          { id:"q6", type:"mc", german:"Danke", english:"Thank you", prompt:"What does 'Danke' mean?", options:["Please","Sorry","Thank you","Welcome"], correct:"Thank you", explanation:"'Danke' means thank you. 'Danke schön' (Thank you very much) is even more polite!" },
-          { id:"q7", type:"mc", german:"Bitte", english:"Please / You're welcome", prompt:"What does 'Bitte' mean?", options:["Please","Please or You're welcome","Sorry","No problem"], correct:"Please or You're welcome", explanation:"'Bitte' is flexible — it means 'please' when asking, and 'you're welcome' when responding to 'Danke'." },
-          { id:"q8", type:"mc", prompt:"Someone says 'Danke!' to you. What's the natural response?", options:["Hallo!","Tschüss!","Bitte!","Ja!"], correct:"Bitte!", explanation:"'Bitte' as a response to 'Danke' means 'You're welcome'. Very common in everyday German." },
-          { id:"q9", type:"mc", german:"Entschuldigung", english:"Excuse me / Sorry", prompt:"What does 'Entschuldigung' mean?", options:["Hello","Goodbye","Excuse me / Sorry","Please"], correct:"Excuse me / Sorry", explanation:"'Entschuldigung' is used to apologize OR to get someone's attention — like 'Excuse me' in English." },
-          { id:"q10", type:"tap_build", prompt:"Build: 'Thank you very much'", words:["Danke","schön","Bitte","Hallo"], correct:["Danke","schön"], explanation:"'Danke schön' = Thank you very much. 'Schön' means 'beautiful/nice'." },
+        "id": "1-2",
+        "title": "Polite Phrases",
+        "xpReward": 30,
+        "intro": {
+          "title": "Please, thanks, sorry",
+          "body": "German classrooms drill polite chunks early because they unlock real interactions quickly.",
+          "tip": "💡 Bitte means please and also you're welcome."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Danke",
+            "english": "thank you",
+            "wrong": [
+              "please",
+              "sorry",
+              "hello"
+            ],
+            "explanation": "Danke is the basic thank you."
+          },
+          {
+            "kind": "v",
+            "german": "Bitte",
+            "english": "please / you're welcome",
+            "wrong": [
+              "goodbye",
+              "excuse me",
+              "yes"
+            ],
+            "explanation": "Bitte changes meaning based on context."
+          },
+          {
+            "kind": "v",
+            "german": "Entschuldigung",
+            "english": "excuse me / sorry",
+            "wrong": [
+              "thank you",
+              "good night",
+              "no"
+            ],
+            "explanation": "Use Entschuldigung to apologize or get attention."
+          },
+          {
+            "kind": "c",
+            "prompt": "Someone says 'Danke!' What do you answer?",
+            "options": [
+              "Bitte!",
+              "Hallo!",
+              "Nein!",
+              "Tschüss!"
+            ],
+            "correct": "Bitte!",
+            "explanation": "Bitte is the natural response to Danke."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Thank you very much'",
+            "correct": [
+              "Danke",
+              "schön"
+            ],
+            "extra": [
+              "Bitte",
+              "Hallo"
+            ],
+            "explanation": "Danke schön is a warmer thank you."
+          }
+        ]
+      },
+      {
+        "id": "1-3",
+        "title": "Classroom German",
+        "xpReward": 35,
+        "intro": {
+          "title": "Useful lesson commands",
+          "body": "Tutors often teach classroom words early so instructions stop feeling confusing.",
+          "tip": "📚 These phrases also work in the app: repeat, listen, choose, write."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "wiederholen",
+            "english": "repeat",
+            "wrong": [
+              "write",
+              "choose",
+              "listen"
+            ],
+            "explanation": "Wiederholen means to repeat."
+          },
+          {
+            "kind": "v",
+            "german": "hören",
+            "english": "listen / hear",
+            "wrong": [
+              "read",
+              "write",
+              "sleep"
+            ],
+            "explanation": "Hören covers hearing and listening."
+          },
+          {
+            "kind": "v",
+            "german": "lesen",
+            "english": "read",
+            "wrong": [
+              "write",
+              "speak",
+              "buy"
+            ],
+            "explanation": "Lesen means to read."
+          },
+          {
+            "kind": "v",
+            "german": "schreiben",
+            "english": "write",
+            "wrong": [
+              "read",
+              "drink",
+              "stand"
+            ],
+            "explanation": "Schreiben means to write."
+          },
+          {
+            "kind": "f",
+            "german": "Bitte ___ Sie das Wort.",
+            "english": "Please repeat the word.",
+            "blank": "wiederholen",
+            "options": [
+              "wiederholen",
+              "trinken",
+              "kaufen",
+              "schlafen"
+            ],
+            "explanation": "The polite classroom form is often 'Bitte ... Sie'."
+          }
+        ]
+      },
+      {
+        "id": "1-4",
+        "title": "First Mini Sentences",
+        "xpReward": 35,
+        "intro": {
+          "title": "Chunks before grammar",
+          "body": "A lot of modern language teaching uses useful chunks before explaining every grammar rule.",
+          "tip": "🧩 Learn phrases as building blocks. Grammar will feel less scary later."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "How do you say 'I am Liam' using a name?",
+            "options": [
+              "Ich bin Liam",
+              "Ich habe Liam",
+              "Ich gehe Liam",
+              "Ich trinke Liam"
+            ],
+            "correct": "Ich bin Liam",
+            "explanation": "Ich bin ... means I am ..."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you say 'My name is Anna'?",
+            "options": [
+              "Ich heiße Anna",
+              "Ich habe Anna",
+              "Ich bin heiße Anna",
+              "Mein Anna heißt"
+            ],
+            "correct": "Ich heiße Anna",
+            "explanation": "Ich heiße literally means I am called."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ neu.",
+            "english": "I am new.",
+            "blank": "bin",
+            "options": [
+              "bin",
+              "bist",
+              "ist",
+              "sind"
+            ],
+            "explanation": "Ich uses bin."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I am new'",
+            "correct": [
+              "Ich",
+              "bin",
+              "neu"
+            ],
+            "extra": [
+              "du",
+              "ist"
+            ],
+            "explanation": "Ich bin neu is a useful beginner sentence."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Willkommen!' mean?",
+            "options": [
+              "Welcome!",
+              "Goodbye!",
+              "Sorry!",
+              "Never!"
+            ],
+            "correct": "Welcome!",
+            "explanation": "Willkommen is what you might see when entering a class or website."
+          }
         ]
       }
     ]
   },
   {
-    id: 2, title: "Numbers & Colors", icon: "🔢", color: "#74C0FC",
-    description: "Count, tell time, and describe the world around you.",
-    lessons: [
+    "id": 2,
+    "title": "Sounds, Spelling & Numbers",
+    "icon": "🔢",
+    "color": "#74C0FC",
+    "description": "Learn German sounds, umlauts, numbers, age, and basic time expressions.",
+    "lessons": [
       {
-        id: "2-1", title: "Numbers 1–10", xpReward: 35,
-        intro: { title: "Counting in German", body: "German numbers follow logical patterns. Once you learn 1–12, you can build any number! Let's start with the basics.", tip: "🎵 Many German children learn numbers through songs — try counting out loud as you go!" },
-        questions: [
-          { id:"q11", type:"mc", german:"eins", english:"one", prompt:"What number is 'eins'?", options:["One","Two","Three","Four"], correct:"One", explanation:"'Eins' = 1. In phone numbers and counting, Germans say 'eins' for 1." },
-          { id:"q12", type:"mc", german:"drei", english:"three", prompt:"What number is 'drei'?", options:["Two","Three","Four","Five"], correct:"Three", explanation:"'Drei' = 3. Notice it sounds a bit like 'dry' — a fun way to remember it!" },
-          { id:"q13", type:"mc", prompt:"How do you say 'five' in German?", options:["vier","fünf","sechs","sieben"], correct:"fünf", explanation:"'Fünf' = 5. The 'ü' is an umlaut — a uniquely German vowel sound." },
-          { id:"q14", type:"mc", german:"zehn", english:"ten", prompt:"What does 'zehn' mean?", options:["Six","Eight","Nine","Ten"], correct:"Ten", explanation:"'Zehn' = 10. Germans count 'eins, zwei, drei, vier, fünf, sechs, sieben, acht, neun, zehn'." },
-          { id:"q15", type:"mc", prompt:"You want to order 2 coffees. What do you say?", options:["Zwei Kaffee, bitte!","Drei Kaffee, bitte!","Eins Kaffee, bitte!","Vier Kaffee, bitte!"], correct:"Zwei Kaffee, bitte!", explanation:"'Zwei' = 2, 'Kaffee' = coffee, 'bitte' = please. Perfect café German!" },
+        "id": "2-1",
+        "title": "German Sounds",
+        "xpReward": 35,
+        "intro": {
+          "title": "Sounding it out",
+          "body": "Teachers focus on sound early because German spelling is more consistent than English once you know the rules.",
+          "tip": "🔊 Practice umlauts: ä, ö, ü. They change the sound and meaning."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Which letter has an umlaut?",
+            "options": [
+              "ü",
+              "u",
+              "s",
+              "t"
+            ],
+            "correct": "ü",
+            "explanation": "The dots are called an Umlaut."
+          },
+          {
+            "kind": "v",
+            "german": "ä",
+            "english": "a/eh sound",
+            "wrong": [
+              "sh sound",
+              "ch sound",
+              "silent letter"
+            ],
+            "explanation": "ä often sounds like the vowel in 'bed'."
+          },
+          {
+            "kind": "v",
+            "german": "ö",
+            "english": "rounded o sound",
+            "wrong": [
+              "hard k sound",
+              "long i sound",
+              "silent e"
+            ],
+            "explanation": "ö is made with rounded lips."
+          },
+          {
+            "kind": "v",
+            "german": "ü",
+            "english": "rounded u sound",
+            "wrong": [
+              "plain u",
+              "th sound",
+              "silent h"
+            ],
+            "explanation": "ü is not the same as u."
+          },
+          {
+            "kind": "c",
+            "prompt": "In German, 'sch' usually sounds like...",
+            "options": [
+              "sh",
+              "sk",
+              "ch",
+              "s"
+            ],
+            "correct": "sh",
+            "explanation": "Schule starts with an English-like 'sh' sound."
+          }
         ]
       },
       {
-        id: "2-2", title: "Colors", xpReward: 35,
-        intro: { title: "Colors in German", body: "Colors (Farben) in German are adjectives — they change slightly depending on what noun they describe. For now, let's just learn the basic words!", tip: "🎨 'Lieblingsfarbe' means 'favorite color' — a very common German conversation starter!" },
-        questions: [
-          { id:"q16", type:"mc", german:"rot", english:"red", prompt:"What color is 'rot'?", options:["Blue","Green","Red","Yellow"], correct:"Red", explanation:"'Rot' = red. Think of 'rouge' in French — both come from Latin 'rubrum'." },
-          { id:"q17", type:"mc", german:"blau", english:"blue", prompt:"What color is 'blau'?", options:["Blue","Green","Yellow","Black"], correct:"Blue", explanation:"'Blau' = blue. This one is easy — it sounds very similar to 'blue'!" },
-          { id:"q18", type:"mc", prompt:"How do you say 'green' in German?", options:["gelb","schwarz","grün","weiß"], correct:"grün", explanation:"'Grün' = green. The umlaut 'ü' gives it that distinctly German sound." },
-          { id:"q19", type:"mc", german:"schwarz", english:"black", prompt:"What color is 'schwarz'?", options:["White","Grey","Black","Brown"], correct:"Black", explanation:"'Schwarz' = black. Germany's famous Black Forest is 'Schwarzwald' — literally 'black forest'." },
-          { id:"q20", type:"mc", prompt:"Das Gras ist ___. (The grass is green.)", options:["rot","blau","grün","gelb"], correct:"grün", explanation:"'Grün' fits perfectly here. German grass is just as green as English grass!" },
+        "id": "2-2",
+        "title": "Numbers 0–12",
+        "xpReward": 35,
+        "intro": {
+          "title": "Count out loud",
+          "body": "Numbers are taught early because they show up in prices, phone numbers, age, and time.",
+          "tip": "🎵 Count rhythmically: eins, zwei, drei..."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "null",
+            "english": "zero",
+            "wrong": [
+              "one",
+              "nine",
+              "ten"
+            ],
+            "explanation": "Null means zero."
+          },
+          {
+            "kind": "v",
+            "german": "eins",
+            "english": "one",
+            "wrong": [
+              "two",
+              "three",
+              "five"
+            ],
+            "explanation": "Eins is one."
+          },
+          {
+            "kind": "v",
+            "german": "zwei",
+            "english": "two",
+            "wrong": [
+              "three",
+              "seven",
+              "ten"
+            ],
+            "explanation": "Zwei is two."
+          },
+          {
+            "kind": "v",
+            "german": "fünf",
+            "english": "five",
+            "wrong": [
+              "four",
+              "six",
+              "eight"
+            ],
+            "explanation": "Fünf is five."
+          },
+          {
+            "kind": "v",
+            "german": "zwölf",
+            "english": "twelve",
+            "wrong": [
+              "two",
+              "twenty",
+              "ten"
+            ],
+            "explanation": "Zwölf is twelve."
+          }
+        ]
+      },
+      {
+        "id": "2-3",
+        "title": "Age & Phone Numbers",
+        "xpReward": 40,
+        "intro": {
+          "title": "Numbers in context",
+          "body": "Real classes quickly move from isolated numbers to personal info like age and phone numbers.",
+          "tip": "☎️ German phone numbers are usually read digit by digit."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich bin ___ Jahre alt.",
+            "english": "I am ten years old.",
+            "blank": "zehn",
+            "options": [
+              "zehn",
+              "eins",
+              "zwei",
+              "alt"
+            ],
+            "explanation": "Age uses 'Ich bin ... Jahre alt'."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'How old are you?'",
+            "options": [
+              "Wie alt bist du?",
+              "Wo bist du?",
+              "Wer bist du?",
+              "Wie heißt du?"
+            ],
+            "correct": "Wie alt bist du?",
+            "explanation": "Wie alt means how old."
+          },
+          {
+            "kind": "v",
+            "german": "Nummer",
+            "english": "number",
+            "wrong": [
+              "name",
+              "street",
+              "friend"
+            ],
+            "explanation": "Nummer means number."
+          },
+          {
+            "kind": "f",
+            "german": "Meine Nummer ist ___ zwei drei.",
+            "english": "My number is one two three.",
+            "blank": "eins",
+            "options": [
+              "eins",
+              "alt",
+              "bin",
+              "null"
+            ],
+            "explanation": "Use number words one after another."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I am twelve years old'",
+            "correct": [
+              "Ich",
+              "bin",
+              "zwölf",
+              "Jahre",
+              "alt"
+            ],
+            "extra": [
+              "du",
+              "heißt"
+            ],
+            "explanation": "Age sentence pattern: Ich bin + number + Jahre alt."
+          }
+        ]
+      },
+      {
+        "id": "2-4",
+        "title": "Time Basics",
+        "xpReward": 40,
+        "intro": {
+          "title": "Time words",
+          "body": "Tutors introduce time early because it pairs naturally with daily routines later.",
+          "tip": "🕐 Uhr means o'clock, but also clock/watch."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Uhr",
+            "english": "o'clock / clock",
+            "wrong": [
+              "year",
+              "day",
+              "house"
+            ],
+            "explanation": "Uhr is used when telling time."
+          },
+          {
+            "kind": "v",
+            "german": "heute",
+            "english": "today",
+            "wrong": [
+              "tomorrow",
+              "yesterday",
+              "always"
+            ],
+            "explanation": "Heute means today."
+          },
+          {
+            "kind": "v",
+            "german": "morgen",
+            "english": "tomorrow / morning",
+            "wrong": [
+              "evening",
+              "week",
+              "never"
+            ],
+            "explanation": "Morgen can mean morning or tomorrow depending on context."
+          },
+          {
+            "kind": "f",
+            "german": "Es ist ___ Uhr.",
+            "english": "It is two o'clock.",
+            "blank": "zwei",
+            "options": [
+              "zwei",
+              "morgen",
+              "heute",
+              "Tag"
+            ],
+            "explanation": "Time uses 'Es ist ... Uhr'."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'am Abend' mean?",
+            "options": [
+              "in the evening",
+              "in the morning",
+              "at noon",
+              "yesterday"
+            ],
+            "correct": "in the evening",
+            "explanation": "Am Abend = in the evening."
+          }
         ]
       }
     ]
   },
   {
-    id: 3, title: "Articles & Gender", icon: "📝", color: "#F4A261",
-    description: "Master der, die, das — the trickiest part of German for English speakers.",
-    lessons: [
+    "id": 3,
+    "title": "Nouns, Articles & Gender",
+    "icon": "📝",
+    "color": "#F4A261",
+    "description": "Learn der, die, das and build the habit of learning every noun with its article.",
+    "lessons": [
       {
-        id: "3-1", title: "Introducing Articles", xpReward: 40,
-        intro: { title: "The Famous der, die, das", body: "Every German noun has a grammatical gender: masculine (der), feminine (die), or neuter (das). Unlike English, there's no shortcut — you need to memorize each noun with its article.", tip: "🧠 A tutor trick: always learn nouns WITH their article. Don't say 'Hund', say 'der Hund'. It becomes automatic over time!" },
-        questions: [
-          { id:"q21", type:"article", german:"Hund", english:"dog", prompt:"Which article goes with 'Hund' (dog)?", options:["der","die","das"], correct:"der", explanation:"'der Hund' — dog is masculine in German. Male animals are often masculine, but not always!" },
-          { id:"q22", type:"article", german:"Katze", english:"cat", prompt:"Which article goes with 'Katze' (cat)?", options:["der","die","das"], correct:"die", explanation:"'die Katze' — cat is feminine. Nouns ending in '-e' are very often feminine in German." },
-          { id:"q23", type:"article", german:"Haus", english:"house", prompt:"Which article goes with 'Haus' (house)?", options:["der","die","das"], correct:"das", explanation:"'das Haus' — house is neuter. Diminutives and many buildings use 'das'." },
-          { id:"q24", type:"article", german:"Frau", english:"woman", prompt:"Which article goes with 'Frau' (woman)?", options:["der","die","das"], correct:"die", explanation:"'die Frau' — woman is feminine, as you'd expect. 'Frau' also means 'Mrs.' or 'Ms.'." },
-          { id:"q25", type:"article", german:"Mann", english:"man", prompt:"Which article goes with 'Mann' (man)?", options:["der","die","das"], correct:"der", explanation:"'der Mann' — man is masculine. 'Mann' also means 'husband'." },
+        "id": "3-1",
+        "title": "Der, Die, Das",
+        "xpReward": 40,
+        "intro": {
+          "title": "German noun gender",
+          "body": "Real German tutors usually insist: never learn a noun alone. Learn it with der, die, or das.",
+          "tip": "🧠 Say 'der Hund', not just 'Hund'."
+        },
+        "entries": [
+          {
+            "kind": "a",
+            "noun": "Hund",
+            "english": "dog",
+            "article": "der",
+            "explanation": "It is der Hund."
+          },
+          {
+            "kind": "a",
+            "noun": "Katze",
+            "english": "cat",
+            "article": "die",
+            "explanation": "It is die Katze."
+          },
+          {
+            "kind": "a",
+            "noun": "Haus",
+            "english": "house",
+            "article": "das",
+            "explanation": "It is das Haus."
+          },
+          {
+            "kind": "a",
+            "noun": "Mann",
+            "english": "man",
+            "article": "der",
+            "explanation": "It is der Mann."
+          },
+          {
+            "kind": "a",
+            "noun": "Frau",
+            "english": "woman",
+            "article": "die",
+            "explanation": "It is die Frau."
+          }
         ]
       },
       {
-        id: "3-2", title: "More Articles", xpReward: 40,
-        intro: { title: "Practice Makes Perfect", body: "Let's drill more nouns. Remember the trick: nouns ending in '-ung', '-heit', '-keit', '-schaft' are almost always feminine (die). Nouns ending in '-chen' or '-lein' are always neuter (das).", tip: "💡 'Das Mädchen' (the girl) is neuter — confusing! That's because '-chen' always makes das, even for people." },
-        questions: [
-          { id:"q26", type:"article", german:"Kind", english:"child", prompt:"Which article goes with 'Kind' (child)?", options:["der","die","das"], correct:"das", explanation:"'das Kind' — child is neuter. Children are neuter in German grammar (don't take it personally!)" },
-          { id:"q27", type:"article", german:"Buch", english:"book", prompt:"Which article goes with 'Buch' (book)?", options:["der","die","das"], correct:"das", explanation:"'das Buch' — book is neuter. Many everyday objects like 'das Haus', 'das Auto', 'das Buch' are neuter." },
-          { id:"q28", type:"article", german:"Schule", english:"school", prompt:"Which article goes with 'Schule' (school)?", options:["der","die","das"], correct:"die", explanation:"'die Schule' — school is feminine. Words ending in '-e' are often feminine." },
-          { id:"q29", type:"mc", prompt:"A German tutor tip: nouns ending in '-ung' are almost always...?", options:["masculine (der)","feminine (die)","neuter (das)","any gender"], correct:"feminine (die)", explanation:"Words like 'die Zeitung' (newspaper), 'die Wohnung' (apartment), 'die Meinung' (opinion) — all '-ung' = die!" },
-          { id:"q30", type:"tap_build", prompt:"Build: 'the dog' (masculine)", words:["der","die","das","Hund","Katze","Haus"], correct:["der","Hund"], explanation:"'der Hund' — 'der' for masculine nouns. Always learn the article with the noun!" },
+        "id": "3-2",
+        "title": "Article Patterns",
+        "xpReward": 40,
+        "intro": {
+          "title": "Patterns help",
+          "body": "There are exceptions, but article patterns make German less random.",
+          "tip": "💡 -ung, -heit, -keit are usually die. -chen is always das."
+        },
+        "entries": [
+          {
+            "kind": "a",
+            "noun": "Zeitung",
+            "english": "newspaper",
+            "article": "die",
+            "explanation": "Words ending in -ung are usually feminine."
+          },
+          {
+            "kind": "a",
+            "noun": "Mädchen",
+            "english": "girl",
+            "article": "das",
+            "explanation": "-chen makes a noun neuter, so das Mädchen."
+          },
+          {
+            "kind": "a",
+            "noun": "Schule",
+            "english": "school",
+            "article": "die",
+            "explanation": "Many nouns ending in -e are feminine."
+          },
+          {
+            "kind": "a",
+            "noun": "Auto",
+            "english": "car",
+            "article": "das",
+            "explanation": "It is das Auto."
+          },
+          {
+            "kind": "a",
+            "noun": "Computer",
+            "english": "computer",
+            "article": "der",
+            "explanation": "Borrowed tech words vary; Computer is der."
+          }
+        ]
+      },
+      {
+        "id": "3-3",
+        "title": "Plurals & The",
+        "xpReward": 45,
+        "intro": {
+          "title": "Plural die",
+          "body": "In German, plural nouns use die in the nominative, no matter their singular gender.",
+          "tip": "📦 Singular: der Hund. Plural: die Hunde."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "What is the plural article for 'the'?",
+            "options": [
+              "die",
+              "der",
+              "das",
+              "den"
+            ],
+            "correct": "die",
+            "explanation": "All nominative plurals use die."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'the dogs'?",
+            "options": [
+              "die Hunde",
+              "der Hunde",
+              "das Hunde",
+              "die Hund"
+            ],
+            "correct": "die Hunde",
+            "explanation": "Plural of Hund is Hunde."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'the children'?",
+            "options": [
+              "die Kinder",
+              "das Kinder",
+              "der Kinder",
+              "die Kind"
+            ],
+            "correct": "die Kinder",
+            "explanation": "Plural uses die."
+          },
+          {
+            "kind": "f",
+            "german": "Die ___ sind klein.",
+            "english": "The cats are small.",
+            "blank": "Katzen",
+            "options": [
+              "Katzen",
+              "Katze",
+              "Hund",
+              "Haus"
+            ],
+            "explanation": "Katze becomes Katzen in plural."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'the houses'",
+            "correct": [
+              "die",
+              "Häuser"
+            ],
+            "extra": [
+              "das",
+              "Haus"
+            ],
+            "explanation": "Plural: die Häuser."
+          }
+        ]
+      },
+      {
+        "id": "3-4",
+        "title": "This, That, A",
+        "xpReward": 45,
+        "intro": {
+          "title": "More noun tools",
+          "body": "After articles, schools usually add small noun words: ein, eine, dieser, diese, dieses.",
+          "tip": "🧩 These words change with gender, so they reinforce der/die/das."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Das ist ___ Hund.",
+            "english": "That is a dog.",
+            "blank": "ein",
+            "options": [
+              "ein",
+              "eine",
+              "einen",
+              "einem"
+            ],
+            "explanation": "Masculine nominative uses ein."
+          },
+          {
+            "kind": "f",
+            "german": "Das ist ___ Katze.",
+            "english": "That is a cat.",
+            "blank": "eine",
+            "options": [
+              "eine",
+              "ein",
+              "einen",
+              "das"
+            ],
+            "explanation": "Feminine nouns use eine."
+          },
+          {
+            "kind": "f",
+            "german": "Das ist ___ Haus.",
+            "english": "That is a house.",
+            "blank": "ein",
+            "options": [
+              "ein",
+              "eine",
+              "der",
+              "die"
+            ],
+            "explanation": "Neuter nominative uses ein."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'this woman'?",
+            "options": [
+              "diese Frau",
+              "dieser Frau",
+              "dieses Frau",
+              "diesen Frau"
+            ],
+            "correct": "diese Frau",
+            "explanation": "Frau is feminine: diese Frau."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'This is a book'",
+            "correct": [
+              "Das",
+              "ist",
+              "ein",
+              "Buch"
+            ],
+            "extra": [
+              "eine",
+              "Hund"
+            ],
+            "explanation": "Buch is neuter: ein Buch."
+          }
         ]
       }
     ]
   },
   {
-    id: 4, title: "Food & Drink", icon: "🍕", color: "#E76F51",
-    description: "Order food, talk about meals, and survive a German café.",
-    lessons: [
+    "id": 4,
+    "title": "People, Pronouns & Sein",
+    "icon": "🧍",
+    "color": "#9775FA",
+    "description": "Introduce yourself, talk about people, and master the essential verb sein.",
+    "lessons": [
       {
-        id: "4-1", title: "At the Café", xpReward: 40,
-        intro: { title: "Kaffeepause! ☕", body: "Germany has a strong café culture. Knowing how to order food and drink is essential — and impresses locals! German cafés often have Kuchen (cake) as a staple.", tip: "🗣️ In a German café, you'd say: 'Ich hätte gern einen Kaffee, bitte.' (I'd like a coffee, please.) Very polite!" },
-        questions: [
-          { id:"q31", type:"mc", german:"Kaffee", english:"coffee", prompt:"What is 'Kaffee'?", options:["Tea","Coffee","Juice","Water"], correct:"Coffee", explanation:"'Kaffee' = coffee. Germany is one of the world's biggest coffee consumers!" },
-          { id:"q32", type:"mc", german:"Wasser", english:"water", prompt:"What is 'Wasser'?", options:["Juice","Wine","Water","Milk"], correct:"Water", explanation:"'Wasser' = water. In German restaurants, sparkling water ('Sprudelwasser') is the default unless you ask for 'still'." },
-          { id:"q33", type:"mc", prompt:"How do you say 'I drink coffee' in German?", options:["Ich esse Kaffee","Ich trinke Kaffee","Ich habe Kaffee","Ich mag Kaffee"], correct:"Ich trinke Kaffee", explanation:"'Trinken' = to drink. 'Essen' = to eat. Important distinction — you drink Kaffee, you eat Kuchen!" },
-          { id:"q34", type:"mc", german:"Brot", english:"bread", prompt:"What is 'Brot'?", options:["Cake","Bread","Butter","Cheese"], correct:"Bread", explanation:"'das Brot' = bread. Germany has over 300 types of bread — it's a national obsession!" },
-          { id:"q35", type:"tap_build", prompt:"Build: 'I eat bread'", words:["Ich","esse","trinke","Brot","Wasser"], correct:["Ich","esse","Brot"], explanation:"'Ich esse Brot' — 'ich' = I, 'esse' = eat (first person of 'essen'), 'Brot' = bread." },
+        "id": "4-1",
+        "title": "Subject Pronouns",
+        "xpReward": 40,
+        "intro": {
+          "title": "Who is doing it?",
+          "body": "Pronouns are the backbone of verb conjugation, so tutors drill them early.",
+          "tip": "👤 ich, du, er, sie, es, wir, ihr, sie."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "ich",
+            "english": "I",
+            "wrong": [
+              "you",
+              "he",
+              "we"
+            ],
+            "explanation": "Ich means I."
+          },
+          {
+            "kind": "v",
+            "german": "du",
+            "english": "you (informal)",
+            "wrong": [
+              "I",
+              "he",
+              "they"
+            ],
+            "explanation": "Du is informal singular you."
+          },
+          {
+            "kind": "v",
+            "german": "wir",
+            "english": "we",
+            "wrong": [
+              "you all",
+              "they",
+              "she"
+            ],
+            "explanation": "Wir means we."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which pronoun is formal 'you'?",
+            "options": [
+              "Sie",
+              "du",
+              "er",
+              "wir"
+            ],
+            "correct": "Sie",
+            "explanation": "Capitalized Sie is formal you."
+          },
+          {
+            "kind": "f",
+            "german": "___ bin neu.",
+            "english": "I am new.",
+            "blank": "Ich",
+            "options": [
+              "Ich",
+              "Du",
+              "Wir",
+              "Sie"
+            ],
+            "explanation": "Ich goes with bin."
+          }
         ]
       },
       {
-        id: "4-2", title: "Meals & Food Words", xpReward: 40,
-        intro: { title: "Mahlzeiten! 🍽️", body: "Germans take their meals seriously. 'Frühstück' (breakfast) is often a big spread, 'Mittagessen' (lunch) is the main meal, and 'Abendessen' (dinner) tends to be lighter.", tip: "🥨 The famous German pretzel is 'Brezel'. When you see someone eating one, you can say 'Guten Appetit!' (Enjoy your meal!)" },
-        questions: [
-          { id:"q36", type:"mc", german:"Frühstück", english:"breakfast", prompt:"What is 'Frühstück'?", options:["Lunch","Dinner","Breakfast","Snack"], correct:"Breakfast", explanation:"'Frühstück' = breakfast. 'Früh' = early, 'Stück' = piece — so literally an 'early piece'. Clever!" },
-          { id:"q37", type:"mc", german:"Mittagessen", english:"lunch", prompt:"What is 'Mittagessen'?", options:["Breakfast","Lunch","Dinner","Snack"], correct:"Lunch", explanation:"'Mittagessen' = lunch. 'Mittag' = midday + 'essen' = eat/food. The midday meal!" },
-          { id:"q38", type:"mc", prompt:"It's 7pm in Germany. You sit down to eat. What meal is it?", options:["Frühstück","Mittagessen","Abendessen","Kaffee"], correct:"Abendessen", explanation:"'Abendessen' = dinner/evening meal. 'Abend' = evening + 'essen' = food. Germans often eat dinner early." },
-          { id:"q39", type:"mc", german:"Milch", english:"milk", prompt:"What is 'Milch'?", options:["Water","Juice","Milk","Wine"], correct:"Milk", explanation:"'die Milch' = milk. Very similar to English! German and English share many food words." },
-          { id:"q40", type:"mc", prompt:"'Guten Appetit!' is said to someone who is...?", options:["Sleeping","About to eat","Greeting you","Leaving"], correct:"About to eat", explanation:"'Guten Appetit' = Enjoy your meal! It's said before eating, similar to the French 'Bon appétit'." },
+        "id": "4-2",
+        "title": "Sein: To Be",
+        "xpReward": 45,
+        "intro": {
+          "title": "The most important verb",
+          "body": "Sein is irregular, but it appears constantly in German.",
+          "tip": "📋 ich bin, du bist, er/sie/es ist, wir sind."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich ___ müde.",
+            "english": "I am tired.",
+            "blank": "bin",
+            "options": [
+              "bin",
+              "bist",
+              "ist",
+              "sind"
+            ],
+            "explanation": "Ich bin."
+          },
+          {
+            "kind": "f",
+            "german": "Du ___ nett.",
+            "english": "You are nice.",
+            "blank": "bist",
+            "options": [
+              "bist",
+              "bin",
+              "ist",
+              "seid"
+            ],
+            "explanation": "Du bist."
+          },
+          {
+            "kind": "f",
+            "german": "Er ___ Lehrer.",
+            "english": "He is a teacher.",
+            "blank": "ist",
+            "options": [
+              "ist",
+              "bin",
+              "sind",
+              "seid"
+            ],
+            "explanation": "Er ist."
+          },
+          {
+            "kind": "f",
+            "german": "Wir ___ Freunde.",
+            "english": "We are friends.",
+            "blank": "sind",
+            "options": [
+              "sind",
+              "seid",
+              "ist",
+              "bin"
+            ],
+            "explanation": "Wir sind."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'She is nice'",
+            "correct": [
+              "Sie",
+              "ist",
+              "nett"
+            ],
+            "extra": [
+              "bin",
+              "bist"
+            ],
+            "explanation": "Sie ist nett."
+          }
+        ]
+      },
+      {
+        "id": "4-3",
+        "title": "Names & Origins",
+        "xpReward": 45,
+        "intro": {
+          "title": "Personal introductions",
+          "body": "This is classic A1 material: name, origin, language, place.",
+          "tip": "🌍 'Ich komme aus...' means I come from..."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "How do you say 'My name is Max'?",
+            "options": [
+              "Ich heiße Max",
+              "Ich habe Max",
+              "Ich bin heiße Max",
+              "Max ich"
+            ],
+            "correct": "Ich heiße Max",
+            "explanation": "Ich heiße means I am called."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Woher kommst du?' mean?",
+            "options": [
+              "Where are you from?",
+              "Where are you going?",
+              "What is your name?",
+              "How old are you?"
+            ],
+            "correct": "Where are you from?",
+            "explanation": "Woher means from where."
+          },
+          {
+            "kind": "f",
+            "german": "Ich komme ___ Amerika.",
+            "english": "I come from America.",
+            "blank": "aus",
+            "options": [
+              "aus",
+              "in",
+              "nach",
+              "bei"
+            ],
+            "explanation": "Origin uses aus."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I come from Germany'",
+            "correct": [
+              "Ich",
+              "komme",
+              "aus",
+              "Deutschland"
+            ],
+            "extra": [
+              "nach",
+              "bin"
+            ],
+            "explanation": "Ich komme aus Deutschland."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is the natural answer to 'Wie heißt du?'",
+            "options": [
+              "Ich heiße Anna.",
+              "Ich komme Anna.",
+              "Ich bin aus Anna.",
+              "Ich wohne Anna."
+            ],
+            "correct": "Ich heiße Anna.",
+            "explanation": "Wie heißt du asks your name."
+          }
+        ]
+      },
+      {
+        "id": "4-4",
+        "title": "People Around You",
+        "xpReward": 45,
+        "intro": {
+          "title": "Talking about people",
+          "body": "Schools add family/friend words after introductions so learners can describe their world.",
+          "tip": "👪 Freund can mean male friend or boyfriend; Freundin can mean female friend or girlfriend."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Freund",
+            "english": "friend",
+            "wrong": [
+              "teacher",
+              "child",
+              "city"
+            ],
+            "explanation": "Freund means friend."
+          },
+          {
+            "kind": "v",
+            "german": "Mutter",
+            "english": "mother",
+            "wrong": [
+              "father",
+              "sister",
+              "daughter"
+            ],
+            "explanation": "Mutter means mother."
+          },
+          {
+            "kind": "v",
+            "german": "Vater",
+            "english": "father",
+            "wrong": [
+              "mother",
+              "brother",
+              "friend"
+            ],
+            "explanation": "Vater means father."
+          },
+          {
+            "kind": "a",
+            "noun": "Kind",
+            "english": "child",
+            "article": "das",
+            "explanation": "It is das Kind."
+          },
+          {
+            "kind": "f",
+            "german": "Meine ___ heißt Maria.",
+            "english": "My mother is named Maria.",
+            "blank": "Mutter",
+            "options": [
+              "Mutter",
+              "Vater",
+              "Kind",
+              "Hund"
+            ],
+            "explanation": "Meine Mutter = my mother."
+          }
         ]
       }
     ]
   },
   {
-    id: 5, title: "Verbs & Action", icon: "⚡", color: "#339AF0",
-    description: "Learn essential German verbs and how to conjugate them.",
-    lessons: [
+    "id": 5,
+    "title": "Food, Drink & Ordering",
+    "icon": "☕",
+    "color": "#E76F51",
+    "description": "Practice food vocabulary and polite restaurant/café German.",
+    "lessons": [
       {
-        id: "5-1", title: "To Be: sein", xpReward: 45,
-        intro: { title: "The Most Important Verb: sein", body: "'Sein' (to be) is the most used verb in German. It's irregular — meaning you can't just add a simple ending. You have to memorize the forms.", tip: "📋 'Sein' forms:\n• ich bin (I am)\n• du bist (you are)\n• er/sie/es ist (he/she/it is)\n• wir sind (we are)\n• ihr seid (you all are)\n• sie sind (they are)" },
-        questions: [
-          { id:"q41", type:"fill", german:"Ich ___ müde.", english:"I am tired.", blank:"bin", options:["bin","ist","sind","bist"], explanation:"'Ich bin' = I am. First person singular of 'sein' (to be)." },
-          { id:"q42", type:"fill", german:"Du ___ nett.", english:"You are nice.", blank:"bist", options:["bin","bist","ist","sind"], explanation:"'Du bist' = You are (informal singular). Used with friends, family, and children." },
-          { id:"q43", type:"fill", german:"Er ___ Arzt.", english:"He is a doctor.", blank:"ist", options:["bin","bist","ist","sind"], explanation:"'Er ist' = He is. The same form is used for 'sie ist' (she is) and 'es ist' (it is)." },
-          { id:"q44", type:"fill", german:"Wir ___ Freunde.", english:"We are friends.", blank:"sind", options:["bin","ist","sind","seid"], explanation:"'Wir sind' = We are. 'Freunde' = friends (plural of 'Freund')." },
-          { id:"q45", type:"mc", prompt:"'Sie ___ aus Deutschland.' How do you say 'She is from Germany'?", options:["She sind","She ist","She bin","She bist"], correct:"She ist", explanation:"'Sie ist' = She is. In context: 'Sie ist aus Deutschland' = She is from Germany." },
+        "id": "5-1",
+        "title": "Cafe Basics",
+        "xpReward": 45,
+        "intro": {
+          "title": "Kaffeepause",
+          "body": "A1 classes love café roleplay because it combines numbers, politeness, and food.",
+          "tip": "☕ 'Ich hätte gern...' is a polite way to order."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Kaffee",
+            "english": "coffee",
+            "wrong": [
+              "tea",
+              "water",
+              "bread"
+            ],
+            "explanation": "Kaffee means coffee."
+          },
+          {
+            "kind": "v",
+            "german": "Tee",
+            "english": "tea",
+            "wrong": [
+              "coffee",
+              "milk",
+              "cake"
+            ],
+            "explanation": "Tee means tea."
+          },
+          {
+            "kind": "v",
+            "german": "Wasser",
+            "english": "water",
+            "wrong": [
+              "juice",
+              "wine",
+              "milk"
+            ],
+            "explanation": "Wasser means water."
+          },
+          {
+            "kind": "v",
+            "german": "Kuchen",
+            "english": "cake",
+            "wrong": [
+              "bread",
+              "cheese",
+              "soup"
+            ],
+            "explanation": "Kuchen means cake."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Coffee, please'",
+            "correct": [
+              "Kaffee",
+              "bitte"
+            ],
+            "extra": [
+              "Tee",
+              "Danke"
+            ],
+            "explanation": "A very simple café order."
+          }
         ]
       },
       {
-        id: "5-2", title: "Common Verbs", xpReward: 45,
-        intro: { title: "Action Words 🎬", body: "German verbs follow patterns for conjugation. Regular verbs add endings to the stem: -e, -st, -t, -en, -t, -en. Let's learn some essential verbs first!", tip: "🎯 Tip from German tutors: learn verbs in the 'ich' (I) form first, since that's what you'll use most in daily conversation." },
-        questions: [
-          { id:"q46", type:"mc", german:"sprechen", english:"to speak", prompt:"What does 'sprechen' mean?", options:["to listen","to speak","to write","to read"], correct:"to speak", explanation:"'Sprechen' = to speak. 'Ich spreche Deutsch' = I speak German. A very useful phrase!" },
-          { id:"q47", type:"fill", german:"Wir ___ Deutsch.", english:"We speak German.", blank:"sprechen", options:["spreche","sprichst","spricht","sprechen"], explanation:"'Wir sprechen' = We speak. 'Sprechen' is a stem-changing verb — 'spreche, sprichst, spricht, sprechen'." },
-          { id:"q48", type:"mc", german:"wohnen", english:"to live (reside)", prompt:"What does 'wohnen' mean?", options:["to live (be alive)","to work","to live (reside)","to travel"], correct:"to live (reside)", explanation:"'Wohnen' = to reside somewhere. 'Ich wohne in Berlin' = I live in Berlin. Regular verb!" },
-          { id:"q49", type:"fill", german:"Er ___ in München.", english:"He lives in Munich.", blank:"wohnt", options:["wohne","wohnst","wohnt","wohnen"], explanation:"'Er wohnt' = He lives. Regular verbs: take the stem (wonh-) and add -t for er/sie/es." },
-          { id:"q50", type:"tap_build", prompt:"Build: 'I speak German'", words:["Ich","spreche","sprichst","Deutsch","Englisch"], correct:["Ich","spreche","Deutsch"], explanation:"'Ich spreche Deutsch' — the essential phrase for every German learner!" },
+        "id": "5-2",
+        "title": "Eating & Drinking Verbs",
+        "xpReward": 45,
+        "intro": {
+          "title": "Useful verbs",
+          "body": "Essen and trinken are early verbs because they create immediate sentences.",
+          "tip": "🍽️ ich esse, du isst, er isst; ich trinke, du trinkst."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "essen",
+            "english": "to eat",
+            "wrong": [
+              "to drink",
+              "to buy",
+              "to read"
+            ],
+            "explanation": "Essen means to eat."
+          },
+          {
+            "kind": "v",
+            "german": "trinken",
+            "english": "to drink",
+            "wrong": [
+              "to eat",
+              "to sleep",
+              "to live"
+            ],
+            "explanation": "Trinken means to drink."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Brot.",
+            "english": "I eat bread.",
+            "blank": "esse",
+            "options": [
+              "esse",
+              "isst",
+              "trinke",
+              "bist"
+            ],
+            "explanation": "Ich esse."
+          },
+          {
+            "kind": "f",
+            "german": "Du ___ Wasser.",
+            "english": "You drink water.",
+            "blank": "trinkst",
+            "options": [
+              "trinkst",
+              "trinke",
+              "trinkt",
+              "isst"
+            ],
+            "explanation": "Du trinkst."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I drink coffee'",
+            "correct": [
+              "Ich",
+              "trinke",
+              "Kaffee"
+            ],
+            "extra": [
+              "esse",
+              "Brot"
+            ],
+            "explanation": "Ich trinke Kaffee."
+          }
+        ]
+      },
+      {
+        "id": "5-3",
+        "title": "Meals",
+        "xpReward": 50,
+        "intro": {
+          "title": "Daily meals",
+          "body": "Meal words are practical and pair well with time-of-day vocabulary.",
+          "tip": "🥨 Frühstück literally looks like 'early piece'."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Frühstück",
+            "english": "breakfast",
+            "wrong": [
+              "lunch",
+              "dinner",
+              "snack"
+            ],
+            "explanation": "Frühstück means breakfast."
+          },
+          {
+            "kind": "v",
+            "german": "Mittagessen",
+            "english": "lunch",
+            "wrong": [
+              "breakfast",
+              "dinner",
+              "dessert"
+            ],
+            "explanation": "Mittagessen means lunch."
+          },
+          {
+            "kind": "v",
+            "german": "Abendessen",
+            "english": "dinner",
+            "wrong": [
+              "breakfast",
+              "lunch",
+              "coffee"
+            ],
+            "explanation": "Abendessen means evening meal."
+          },
+          {
+            "kind": "c",
+            "prompt": "What do you say before someone eats?",
+            "options": [
+              "Guten Appetit!",
+              "Gute Nacht!",
+              "Guten Morgen!",
+              "Tschüss!"
+            ],
+            "correct": "Guten Appetit!",
+            "explanation": "Guten Appetit means enjoy your meal."
+          },
+          {
+            "kind": "f",
+            "german": "Zum ___ esse ich Brot.",
+            "english": "For breakfast I eat bread.",
+            "blank": "Frühstück",
+            "options": [
+              "Frühstück",
+              "Abend",
+              "Morgen",
+              "Wasser"
+            ],
+            "explanation": "Zum Frühstück = for breakfast."
+          }
+        ]
+      },
+      {
+        "id": "5-4",
+        "title": "Ordering Politely",
+        "xpReward": 50,
+        "intro": {
+          "title": "Restaurant chunks",
+          "body": "Tutors teach complete ordering sentences so learners can survive real interactions.",
+          "tip": "🙋 'Ich möchte...' is useful, but 'Ich hätte gern...' sounds softer."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Which phrase means 'I would like a water'?",
+            "options": [
+              "Ich hätte gern ein Wasser.",
+              "Ich bin Wasser.",
+              "Ich gehe Wasser.",
+              "Ich habe gern Wasser."
+            ],
+            "correct": "Ich hätte gern ein Wasser.",
+            "explanation": "Ich hätte gern... is a polite order."
+          },
+          {
+            "kind": "f",
+            "german": "Ich möchte ___ Kaffee.",
+            "english": "I would like a coffee.",
+            "blank": "einen",
+            "options": [
+              "einen",
+              "eine",
+              "ein",
+              "der"
+            ],
+            "explanation": "Kaffee is masculine: einen Kaffee in accusative."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Die Rechnung, bitte' mean?",
+            "options": [
+              "The bill, please",
+              "The water, please",
+              "The menu, please",
+              "The table, please"
+            ],
+            "correct": "The bill, please",
+            "explanation": "Rechnung is the bill/check."
+          },
+          {
+            "kind": "v",
+            "german": "Speisekarte",
+            "english": "menu",
+            "wrong": [
+              "bill",
+              "waiter",
+              "fork"
+            ],
+            "explanation": "Speisekarte means menu."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'The bill, please'",
+            "correct": [
+              "Die",
+              "Rechnung",
+              "bitte"
+            ],
+            "extra": [
+              "Kaffee",
+              "Hallo"
+            ],
+            "explanation": "Die Rechnung, bitte."
+          }
         ]
       }
     ]
   },
   {
-    id: 6, title: "Conversations", icon: "💬", color: "#9775FA",
-    description: "Put it all together with real German conversation scenarios.",
-    lessons: [
+    "id": 6,
+    "title": "Present Tense Verbs",
+    "icon": "⚡",
+    "color": "#339AF0",
+    "description": "Build sentences with common regular and irregular verbs.",
+    "lessons": [
       {
-        id: "6-1", title: "Introducing Yourself", xpReward: 50,
-        intro: { title: "Meeting Someone New 🤝", body: "One of the first things you'll do in Germany is introduce yourself. Learn how to say your name, where you're from, and what you do.", tip: "🗣️ A typical German intro:\n'Hallo, ich bin [Name]. Ich komme aus [country]. Ich bin [job/student].\nNice to meet you!'" },
-        questions: [
-          { id:"q51", type:"mc", prompt:"How do you say 'My name is Max' in German?", options:["Ich heiße Max","Ich bin Max heißt","Mein Name ist heißt Max","Ich Max heiße"], correct:"Ich heiße Max", explanation:"'Ich heiße...' = My name is... Literally 'I am called...'. Very natural German intro!" },
-          { id:"q52", type:"mc", german:"Woher kommst du?", english:"Where are you from?", prompt:"What does 'Woher kommst du?' mean?", options:["What do you do?","Where are you going?","Where are you from?","How old are you?"], correct:"Where are you from?", explanation:"'Woher' = from where, 'kommst' = come (you), 'du' = you. A very common question when meeting someone!" },
-          { id:"q53", type:"mc", prompt:"You're from the US. How do you say 'I come from America'?", options:["Ich komme aus Amerika","Ich bin Amerika","Ich gehe nach Amerika","Ich lebe Amerika"], correct:"Ich komme aus Amerika", explanation:"'Ich komme aus...' = I come from... 'Aus' means 'from' when talking about your origin." },
-          { id:"q54", type:"mc", german:"Wie geht's?", english:"How are you? (informal)", prompt:"What does 'Wie geht's?' mean?", options:["What's your name?","How are you?","Where are you from?","How old are you?"], correct:"How are you?", explanation:"'Wie geht's?' = How's it going? Short for 'Wie geht es dir?' Very common casual greeting between friends." },
-          { id:"q55", type:"tap_build", prompt:"Build: 'I am a student'", words:["Ich","bin","bist","Student","Lehrer","Arzt"], correct:["Ich","bin","Student"], explanation:"'Ich bin Student' = I am a student. Simple! Note: no 'ein' needed for professions in German." },
+        "id": "6-1",
+        "title": "Regular Verb Pattern",
+        "xpReward": 50,
+        "intro": {
+          "title": "Verb stems and endings",
+          "body": "German tutors explain the regular pattern early: stem + ending.",
+          "tip": "⚙️ machen → ich mache, du machst, er macht, wir machen."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "machen",
+            "english": "to do / make",
+            "wrong": [
+              "to see",
+              "to know",
+              "to sleep"
+            ],
+            "explanation": "Machen means to do or make."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Hausaufgaben.",
+            "english": "I do homework.",
+            "blank": "mache",
+            "options": [
+              "mache",
+              "machst",
+              "macht",
+              "machen"
+            ],
+            "explanation": "Ich uses -e."
+          },
+          {
+            "kind": "f",
+            "german": "Du ___ Musik.",
+            "english": "You make music.",
+            "blank": "machst",
+            "options": [
+              "machst",
+              "mache",
+              "macht",
+              "machen"
+            ],
+            "explanation": "Du uses -st."
+          },
+          {
+            "kind": "f",
+            "german": "Er ___ Sport.",
+            "english": "He does sports.",
+            "blank": "macht",
+            "options": [
+              "macht",
+              "mache",
+              "machen",
+              "machst"
+            ],
+            "explanation": "Er uses -t."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'We do homework'",
+            "correct": [
+              "Wir",
+              "machen",
+              "Hausaufgaben"
+            ],
+            "extra": [
+              "mache",
+              "du"
+            ],
+            "explanation": "Wir uses the infinitive form: machen."
+          }
+        ]
+      },
+      {
+        "id": "6-2",
+        "title": "Learning & Speaking",
+        "xpReward": 50,
+        "intro": {
+          "title": "Language-learning verbs",
+          "body": "These are immediately relevant inside Sprak and in real class conversations.",
+          "tip": "🗣️ sprechen is irregular: du sprichst, er spricht."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "lernen",
+            "english": "to learn",
+            "wrong": [
+              "to live",
+              "to drink",
+              "to buy"
+            ],
+            "explanation": "Lernen means to learn."
+          },
+          {
+            "kind": "v",
+            "german": "sprechen",
+            "english": "to speak",
+            "wrong": [
+              "to write",
+              "to read",
+              "to hear"
+            ],
+            "explanation": "Sprechen means to speak."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Deutsch.",
+            "english": "I am learning German.",
+            "blank": "lerne",
+            "options": [
+              "lerne",
+              "lernst",
+              "lernt",
+              "lernen"
+            ],
+            "explanation": "Ich lerne."
+          },
+          {
+            "kind": "f",
+            "german": "Wir ___ Deutsch.",
+            "english": "We speak German.",
+            "blank": "sprechen",
+            "options": [
+              "sprechen",
+              "sprichst",
+              "spricht",
+              "spreche"
+            ],
+            "explanation": "Wir sprechen."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I speak a little German'",
+            "correct": [
+              "Ich",
+              "spreche",
+              "ein",
+              "bisschen",
+              "Deutsch"
+            ],
+            "extra": [
+              "lerne",
+              "viel"
+            ],
+            "explanation": "Ein bisschen Deutsch = a little German."
+          }
+        ]
+      },
+      {
+        "id": "6-3",
+        "title": "Living & Working",
+        "xpReward": 55,
+        "intro": {
+          "title": "Real-life verbs",
+          "body": "Where you live and work is A1/A2 conversation material.",
+          "tip": "🏠 wohnen = reside; leben = live/be alive."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "wohnen",
+            "english": "to live / reside",
+            "wrong": [
+              "to work",
+              "to learn",
+              "to buy"
+            ],
+            "explanation": "Wohnen means to reside somewhere."
+          },
+          {
+            "kind": "v",
+            "german": "arbeiten",
+            "english": "to work",
+            "wrong": [
+              "to travel",
+              "to eat",
+              "to sleep"
+            ],
+            "explanation": "Arbeiten means to work."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ in Berlin.",
+            "english": "I live in Berlin.",
+            "blank": "wohne",
+            "options": [
+              "wohne",
+              "wohnt",
+              "wohnst",
+              "wohnen"
+            ],
+            "explanation": "Ich wohne."
+          },
+          {
+            "kind": "f",
+            "german": "Sie ___ heute.",
+            "english": "She works today.",
+            "blank": "arbeitet",
+            "options": [
+              "arbeitet",
+              "arbeite",
+              "arbeiten",
+              "arbeitest"
+            ],
+            "explanation": "Sie arbeitet."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which sentence means 'He lives in Munich'?",
+            "options": [
+              "Er wohnt in München.",
+              "Er arbeitet München.",
+              "Er trinkt München.",
+              "Er ist München."
+            ],
+            "correct": "Er wohnt in München.",
+            "explanation": "Wohnen in + city."
+          }
+        ]
+      },
+      {
+        "id": "6-4",
+        "title": "Likes & Wants",
+        "xpReward": 55,
+        "intro": {
+          "title": "Preferences",
+          "body": "Tutors add mögen/möchte early because they make conversation personal.",
+          "tip": "❤️ Ich mag... = I like... / Ich möchte... = I would like..."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "mögen",
+            "english": "to like",
+            "wrong": [
+              "to must",
+              "to can",
+              "to go"
+            ],
+            "explanation": "Mögen means to like."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Kaffee.",
+            "english": "I like coffee.",
+            "blank": "mag",
+            "options": [
+              "mag",
+              "möchte",
+              "muss",
+              "kann"
+            ],
+            "explanation": "Ich mag."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Wasser.",
+            "english": "I would like water.",
+            "blank": "möchte",
+            "options": [
+              "möchte",
+              "mag",
+              "bin",
+              "habe"
+            ],
+            "explanation": "Ich möchte is polite and useful."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is more polite for ordering?",
+            "options": [
+              "Ich möchte Tee.",
+              "Ich bin Tee.",
+              "Ich muss Tee.",
+              "Ich heiße Tee."
+            ],
+            "correct": "Ich möchte Tee.",
+            "explanation": "Ich möchte = I would like."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I like German'",
+            "correct": [
+              "Ich",
+              "mag",
+              "Deutsch"
+            ],
+            "extra": [
+              "möchte",
+              "Kaffee"
+            ],
+            "explanation": "Ich mag Deutsch."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "title": "Questions, Negation & Word Order",
+    "icon": "❓",
+    "color": "#FAB005",
+    "description": "Ask useful questions and answer with yes, no, not, and no/none.",
+    "lessons": [
+      {
+        "id": "7-1",
+        "title": "Question Words",
+        "xpReward": 50,
+        "intro": {
+          "title": "W-Fragen",
+          "body": "German question words usually start with W, just like English often starts with wh.",
+          "tip": "❓ wer, was, wo, wann, warum, wie."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "wer",
+            "english": "who",
+            "wrong": [
+              "what",
+              "where",
+              "when"
+            ],
+            "explanation": "Wer means who."
+          },
+          {
+            "kind": "v",
+            "german": "was",
+            "english": "what",
+            "wrong": [
+              "who",
+              "why",
+              "how"
+            ],
+            "explanation": "Was means what."
+          },
+          {
+            "kind": "v",
+            "german": "wo",
+            "english": "where",
+            "wrong": [
+              "when",
+              "why",
+              "who"
+            ],
+            "explanation": "Wo means where."
+          },
+          {
+            "kind": "v",
+            "german": "warum",
+            "english": "why",
+            "wrong": [
+              "where",
+              "when",
+              "how"
+            ],
+            "explanation": "Warum means why."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'Where are you?'",
+            "options": [
+              "Wo bist du?",
+              "Wer bist du?",
+              "Was bist du?",
+              "Wann bist du?"
+            ],
+            "correct": "Wo bist du?",
+            "explanation": "Wo = where."
+          }
+        ]
+      },
+      {
+        "id": "7-2",
+        "title": "Yes/No Questions",
+        "xpReward": 50,
+        "intro": {
+          "title": "Verb first questions",
+          "body": "German yes/no questions often start with the verb.",
+          "tip": "🔁 Statement: Du bist müde. Question: Bist du müde?"
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Which is 'Are you tired?'",
+            "options": [
+              "Bist du müde?",
+              "Du bist müde?",
+              "Müde du bist?",
+              "Ist müde du?"
+            ],
+            "correct": "Bist du müde?",
+            "explanation": "Verb comes first in yes/no questions."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is 'Do you speak German?'",
+            "options": [
+              "Sprichst du Deutsch?",
+              "Du sprichst Deutsch?",
+              "Deutsch du sprichst?",
+              "Sprechen du Deutsch?"
+            ],
+            "correct": "Sprichst du Deutsch?",
+            "explanation": "Verb-first question word order."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Do you live here?'",
+            "correct": [
+              "Wohnst",
+              "du",
+              "hier"
+            ],
+            "extra": [
+              "ich",
+              "wo"
+            ],
+            "explanation": "Wohnst du hier?"
+          },
+          {
+            "kind": "f",
+            "german": "___ du Kaffee?",
+            "english": "Do you drink coffee?",
+            "blank": "Trinkst",
+            "options": [
+              "Trinkst",
+              "Trinke",
+              "Trinkt",
+              "Trinken"
+            ],
+            "explanation": "Du form: trinkst."
+          },
+          {
+            "kind": "c",
+            "prompt": "What is the natural answer to 'Bist du neu?'",
+            "options": [
+              "Ja, ich bin neu.",
+              "Ja, ich neu bin.",
+              "Ja, du bist neu.",
+              "Nein, ich bist neu."
+            ],
+            "correct": "Ja, ich bin neu.",
+            "explanation": "Answer returns to normal word order."
+          }
+        ]
+      },
+      {
+        "id": "7-3",
+        "title": "Nicht",
+        "xpReward": 55,
+        "intro": {
+          "title": "Saying not",
+          "body": "Nicht negates verbs, adjectives, and whole ideas. Placement takes practice.",
+          "tip": "🚫 Ich bin nicht müde = I am not tired."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "nicht",
+            "english": "not",
+            "wrong": [
+              "no",
+              "never",
+              "always"
+            ],
+            "explanation": "Nicht means not."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin ___ müde.",
+            "english": "I am not tired.",
+            "blank": "nicht",
+            "options": [
+              "nicht",
+              "kein",
+              "nein",
+              "nie"
+            ],
+            "explanation": "Use nicht with adjectives."
+          },
+          {
+            "kind": "f",
+            "german": "Er kommt ___ aus Berlin.",
+            "english": "He does not come from Berlin.",
+            "blank": "nicht",
+            "options": [
+              "nicht",
+              "kein",
+              "nein",
+              "eine"
+            ],
+            "explanation": "Nicht negates the phrase."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'I do not speak German'?",
+            "options": [
+              "Ich spreche nicht Deutsch.",
+              "Ich nicht spreche Deutsch.",
+              "Ich spreche kein Deutsch.",
+              "Both 1 and 3 can work"
+            ],
+            "correct": "Both 1 and 3 can work",
+            "explanation": "Kein Deutsch is often natural; nicht Deutsch also contrasts with another language."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'She is not here'",
+            "correct": [
+              "Sie",
+              "ist",
+              "nicht",
+              "hier"
+            ],
+            "extra": [
+              "kein",
+              "du"
+            ],
+            "explanation": "Nicht usually comes before the place/adjective it negates."
+          }
+        ]
+      },
+      {
+        "id": "7-4",
+        "title": "Kein",
+        "xpReward": 55,
+        "intro": {
+          "title": "No/Not a",
+          "body": "Kein acts like 'not a' or 'no' before nouns.",
+          "tip": "📦 Ich habe keinen Hund = I do not have a dog."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "kein",
+            "english": "no / not a",
+            "wrong": [
+              "yes",
+              "also",
+              "always"
+            ],
+            "explanation": "Kein negates nouns."
+          },
+          {
+            "kind": "f",
+            "german": "Das ist ___ Problem.",
+            "english": "That is not a problem.",
+            "blank": "kein",
+            "options": [
+              "kein",
+              "nicht",
+              "nein",
+              "keine"
+            ],
+            "explanation": "Problem is neuter: kein Problem."
+          },
+          {
+            "kind": "f",
+            "german": "Ich habe ___ Katze.",
+            "english": "I do not have a cat.",
+            "blank": "keine",
+            "options": [
+              "keine",
+              "kein",
+              "nicht",
+              "nein"
+            ],
+            "explanation": "Katze is feminine: keine Katze."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'No idea'?",
+            "options": [
+              "Keine Ahnung",
+              "Nicht Ahnung",
+              "Nein Ahnung",
+              "Kein Ahnung"
+            ],
+            "correct": "Keine Ahnung",
+            "explanation": "Ahnung is feminine: keine Ahnung."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I have no time'",
+            "correct": [
+              "Ich",
+              "habe",
+              "keine",
+              "Zeit"
+            ],
+            "extra": [
+              "nicht",
+              "bin"
+            ],
+            "explanation": "Zeit is feminine: keine Zeit."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "title": "Family, Descriptions & Adjectives",
+    "icon": "👪",
+    "color": "#FF922B",
+    "description": "Talk about family, personality, appearance, and simple descriptions.",
+    "lessons": [
+      {
+        "id": "8-1",
+        "title": "Family Words",
+        "xpReward": 50,
+        "intro": {
+          "title": "People close to you",
+          "body": "Family vocabulary is one of the first real-life topics in school courses.",
+          "tip": "👪 Meine Mutter, mein Vater — possessives change with gender."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Mutter",
+            "english": "mother",
+            "wrong": [
+              "father",
+              "sister",
+              "brother"
+            ],
+            "explanation": "Mutter means mother."
+          },
+          {
+            "kind": "v",
+            "german": "Vater",
+            "english": "father",
+            "wrong": [
+              "mother",
+              "daughter",
+              "friend"
+            ],
+            "explanation": "Vater means father."
+          },
+          {
+            "kind": "v",
+            "german": "Bruder",
+            "english": "brother",
+            "wrong": [
+              "sister",
+              "mother",
+              "child"
+            ],
+            "explanation": "Bruder means brother."
+          },
+          {
+            "kind": "v",
+            "german": "Schwester",
+            "english": "sister",
+            "wrong": [
+              "brother",
+              "father",
+              "friend"
+            ],
+            "explanation": "Schwester means sister."
+          },
+          {
+            "kind": "f",
+            "german": "Meine ___ heißt Lisa.",
+            "english": "My sister is named Lisa.",
+            "blank": "Schwester",
+            "options": [
+              "Schwester",
+              "Bruder",
+              "Vater",
+              "Hund"
+            ],
+            "explanation": "Meine Schwester = my sister."
+          }
+        ]
+      },
+      {
+        "id": "8-2",
+        "title": "Adjective Basics",
+        "xpReward": 50,
+        "intro": {
+          "title": "Describing things",
+          "body": "At first, use adjectives after sein: Das ist gut. Der Hund ist klein.",
+          "tip": "🎨 Adjective endings come later; start with simple predicate adjectives."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "groß",
+            "english": "big / tall",
+            "wrong": [
+              "small",
+              "old",
+              "young"
+            ],
+            "explanation": "Groß means big or tall."
+          },
+          {
+            "kind": "v",
+            "german": "klein",
+            "english": "small",
+            "wrong": [
+              "big",
+              "new",
+              "old"
+            ],
+            "explanation": "Klein means small."
+          },
+          {
+            "kind": "v",
+            "german": "alt",
+            "english": "old",
+            "wrong": [
+              "young",
+              "nice",
+              "fast"
+            ],
+            "explanation": "Alt means old."
+          },
+          {
+            "kind": "v",
+            "german": "neu",
+            "english": "new",
+            "wrong": [
+              "old",
+              "bad",
+              "slow"
+            ],
+            "explanation": "Neu means new."
+          },
+          {
+            "kind": "f",
+            "german": "Das Haus ist ___.",
+            "english": "The house is big.",
+            "blank": "groß",
+            "options": [
+              "groß",
+              "klein",
+              "alt",
+              "neu"
+            ],
+            "explanation": "Predicate adjectives do not take endings here."
+          }
+        ]
+      },
+      {
+        "id": "8-3",
+        "title": "Personality",
+        "xpReward": 55,
+        "intro": {
+          "title": "People are more than nouns",
+          "body": "These words make conversations more human and profile-like.",
+          "tip": "😊 Nett is a very common word for nice."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "nett",
+            "english": "nice",
+            "wrong": [
+              "tired",
+              "small",
+              "expensive"
+            ],
+            "explanation": "Nett means nice."
+          },
+          {
+            "kind": "v",
+            "german": "freundlich",
+            "english": "friendly",
+            "wrong": [
+              "hungry",
+              "blue",
+              "cheap"
+            ],
+            "explanation": "Freundlich means friendly."
+          },
+          {
+            "kind": "v",
+            "german": "müde",
+            "english": "tired",
+            "wrong": [
+              "awake",
+              "nice",
+              "new"
+            ],
+            "explanation": "Müde means tired."
+          },
+          {
+            "kind": "v",
+            "german": "glücklich",
+            "english": "happy",
+            "wrong": [
+              "sad",
+              "angry",
+              "small"
+            ],
+            "explanation": "Glücklich means happy."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin ___.",
+            "english": "I am tired.",
+            "blank": "müde",
+            "options": [
+              "müde",
+              "nett",
+              "groß",
+              "neu"
+            ],
+            "explanation": "Ich bin müde is a common sentence."
+          }
+        ]
+      },
+      {
+        "id": "8-4",
+        "title": "Possessives",
+        "xpReward": 55,
+        "intro": {
+          "title": "My, your, his, her",
+          "body": "Possessives are usually taught with family because they naturally fit together.",
+          "tip": "🧩 mein Vater, meine Mutter, mein Kind."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Das ist ___ Vater.",
+            "english": "That is my father.",
+            "blank": "mein",
+            "options": [
+              "mein",
+              "meine",
+              "dein",
+              "deine"
+            ],
+            "explanation": "Vater is masculine: mein Vater."
+          },
+          {
+            "kind": "f",
+            "german": "Das ist ___ Mutter.",
+            "english": "That is my mother.",
+            "blank": "meine",
+            "options": [
+              "meine",
+              "mein",
+              "dein",
+              "sein"
+            ],
+            "explanation": "Mutter is feminine: meine Mutter."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'your brother' informally?",
+            "options": [
+              "dein Bruder",
+              "deine Bruder",
+              "du Bruder",
+              "sein Bruder"
+            ],
+            "correct": "dein Bruder",
+            "explanation": "Bruder is masculine: dein Bruder."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'her sister'?",
+            "options": [
+              "ihre Schwester",
+              "ihr Schwester",
+              "sie Schwester",
+              "sein Schwester"
+            ],
+            "correct": "ihre Schwester",
+            "explanation": "Schwester is feminine: ihre Schwester."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'My family is nice'",
+            "correct": [
+              "Meine",
+              "Familie",
+              "ist",
+              "nett"
+            ],
+            "extra": [
+              "mein",
+              "dein"
+            ],
+            "explanation": "Familie is feminine: meine Familie."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "title": "Home, Daily Routine & Separable Verbs",
+    "icon": "🏠",
+    "color": "#20C997",
+    "description": "Use room words, routine verbs, and separable verbs like aufstehen.",
+    "lessons": [
+      {
+        "id": "9-1",
+        "title": "Rooms & Objects",
+        "xpReward": 55,
+        "intro": {
+          "title": "Around the house",
+          "body": "Home vocabulary is practical and easy to visualize, which helps memory.",
+          "tip": "🏠 Draw or imagine the room while answering."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Zimmer",
+            "english": "room",
+            "wrong": [
+              "door",
+              "window",
+              "kitchen"
+            ],
+            "explanation": "Zimmer means room."
+          },
+          {
+            "kind": "v",
+            "german": "Küche",
+            "english": "kitchen",
+            "wrong": [
+              "bathroom",
+              "garden",
+              "door"
+            ],
+            "explanation": "Küche means kitchen."
+          },
+          {
+            "kind": "v",
+            "german": "Tür",
+            "english": "door",
+            "wrong": [
+              "window",
+              "chair",
+              "table"
+            ],
+            "explanation": "Tür means door."
+          },
+          {
+            "kind": "v",
+            "german": "Fenster",
+            "english": "window",
+            "wrong": [
+              "door",
+              "wall",
+              "floor"
+            ],
+            "explanation": "Fenster means window."
+          },
+          {
+            "kind": "a",
+            "noun": "Wohnung",
+            "english": "apartment",
+            "article": "die",
+            "explanation": "-ung words are usually feminine: die Wohnung."
+          }
+        ]
+      },
+      {
+        "id": "9-2",
+        "title": "Routine Verbs",
+        "xpReward": 55,
+        "intro": {
+          "title": "Daily life",
+          "body": "Routine verbs make it possible to describe a whole day in simple German.",
+          "tip": "⏰ Many routine verbs are separable: aufstehen, einkaufen."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "aufstehen",
+            "english": "to get up",
+            "wrong": [
+              "to sleep",
+              "to buy",
+              "to read"
+            ],
+            "explanation": "Aufstehen is separable."
+          },
+          {
+            "kind": "v",
+            "german": "schlafen",
+            "english": "to sleep",
+            "wrong": [
+              "to work",
+              "to eat",
+              "to learn"
+            ],
+            "explanation": "Schlafen means to sleep."
+          },
+          {
+            "kind": "v",
+            "german": "gehen",
+            "english": "to go",
+            "wrong": [
+              "to come",
+              "to stay",
+              "to see"
+            ],
+            "explanation": "Gehen means to go."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ um sieben Uhr auf.",
+            "english": "I get up at seven o'clock.",
+            "blank": "stehe",
+            "options": [
+              "stehe",
+              "steht",
+              "stehen",
+              "stehst"
+            ],
+            "explanation": "Separable verb: Ich stehe ... auf."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I go home'",
+            "correct": [
+              "Ich",
+              "gehe",
+              "nach",
+              "Hause"
+            ],
+            "extra": [
+              "bin",
+              "auf"
+            ],
+            "explanation": "Nach Hause = homeward/home."
+          }
+        ]
+      },
+      {
+        "id": "9-3",
+        "title": "Chores & Cleanliness",
+        "xpReward": 60,
+        "intro": {
+          "title": "Useful verbs at home",
+          "body": "Classrooms often use home tasks to practice present tense and object nouns.",
+          "tip": "🧹 sauber = clean, schmutzig = dirty."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "sauber",
+            "english": "clean",
+            "wrong": [
+              "dirty",
+              "loud",
+              "small"
+            ],
+            "explanation": "Sauber means clean."
+          },
+          {
+            "kind": "v",
+            "german": "schmutzig",
+            "english": "dirty",
+            "wrong": [
+              "clean",
+              "quiet",
+              "new"
+            ],
+            "explanation": "Schmutzig means dirty."
+          },
+          {
+            "kind": "v",
+            "german": "kochen",
+            "english": "to cook",
+            "wrong": [
+              "to clean",
+              "to sleep",
+              "to drive"
+            ],
+            "explanation": "Kochen means to cook."
+          },
+          {
+            "kind": "v",
+            "german": "putzen",
+            "english": "to clean",
+            "wrong": [
+              "to cook",
+              "to learn",
+              "to speak"
+            ],
+            "explanation": "Putzen means to clean."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ die Küche.",
+            "english": "I clean the kitchen.",
+            "blank": "putze",
+            "options": [
+              "putze",
+              "putzt",
+              "putzen",
+              "kocht"
+            ],
+            "explanation": "Ich putze."
+          }
+        ]
+      },
+      {
+        "id": "9-4",
+        "title": "A Simple Day",
+        "xpReward": 60,
+        "intro": {
+          "title": "Put routine together",
+          "body": "A tutor would now connect time, verbs, and household words into short sequences.",
+          "tip": "🧠 Try saying the whole day as a mini story."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Am Morgen ___ ich Kaffee.",
+            "english": "In the morning I drink coffee.",
+            "blank": "trinke",
+            "options": [
+              "trinke",
+              "trinkst",
+              "trinkt",
+              "trinken"
+            ],
+            "explanation": "Am Morgen = in the morning."
+          },
+          {
+            "kind": "f",
+            "german": "Am Abend ___ ich Deutsch.",
+            "english": "In the evening I learn German.",
+            "blank": "lerne",
+            "options": [
+              "lerne",
+              "lernst",
+              "lernt",
+              "lernen"
+            ],
+            "explanation": "Am Abend = in the evening."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which sentence means 'I sleep at night'?",
+            "options": [
+              "Ich schlafe in der Nacht.",
+              "Ich esse in der Nacht.",
+              "Ich arbeite der Nacht.",
+              "Ich bin Nacht."
+            ],
+            "correct": "Ich schlafe in der Nacht.",
+            "explanation": "In der Nacht = at night."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Today I cook'",
+            "correct": [
+              "Heute",
+              "koche",
+              "ich"
+            ],
+            "extra": [
+              "du",
+              "kocht"
+            ],
+            "explanation": "Time words can come first; verb stays second."
+          },
+          {
+            "kind": "c",
+            "prompt": "What happens to the verb after 'Heute' starts the sentence?",
+            "options": [
+              "It stays in second position",
+              "It goes to the end",
+              "It disappears",
+              "It becomes plural"
+            ],
+            "correct": "It stays in second position",
+            "explanation": "German main clauses like the verb in position two."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "title": "Travel, Directions & Places",
+    "icon": "🚆",
+    "color": "#4DABF7",
+    "description": "Navigate trains, streets, hotels, and city directions.",
+    "lessons": [
+      {
+        "id": "10-1",
+        "title": "Transport Words",
+        "xpReward": 60,
+        "intro": {
+          "title": "Getting around",
+          "body": "Travel roleplays are a staple of A1/A2 classes because they are concrete and useful.",
+          "tip": "🚆 Der Zug has Verspätung more often than learners expect."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Bahnhof",
+            "english": "train station",
+            "wrong": [
+              "airport",
+              "hotel",
+              "street"
+            ],
+            "explanation": "Bahnhof means train station."
+          },
+          {
+            "kind": "v",
+            "german": "Zug",
+            "english": "train",
+            "wrong": [
+              "bus",
+              "ticket",
+              "platform"
+            ],
+            "explanation": "Zug means train."
+          },
+          {
+            "kind": "v",
+            "german": "Bus",
+            "english": "bus",
+            "wrong": [
+              "train",
+              "bike",
+              "car"
+            ],
+            "explanation": "Bus means bus."
+          },
+          {
+            "kind": "v",
+            "german": "Fahrkarte",
+            "english": "ticket",
+            "wrong": [
+              "suitcase",
+              "map",
+              "room"
+            ],
+            "explanation": "Fahrkarte means travel ticket."
+          },
+          {
+            "kind": "f",
+            "german": "Der Zug hat ___.",
+            "english": "The train is delayed.",
+            "blank": "Verspätung",
+            "options": [
+              "Verspätung",
+              "Hunger",
+              "Zimmer",
+              "Wasser"
+            ],
+            "explanation": "Verspätung means delay."
+          }
+        ]
+      },
+      {
+        "id": "10-2",
+        "title": "Directions",
+        "xpReward": 60,
+        "intro": {
+          "title": "Where do I go?",
+          "body": "Direction words help learners survive real cities and practice imperative-like chunks.",
+          "tip": "➡️ links = left, rechts = right, geradeaus = straight ahead."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "links",
+            "english": "left",
+            "wrong": [
+              "right",
+              "straight",
+              "behind"
+            ],
+            "explanation": "Links means left."
+          },
+          {
+            "kind": "v",
+            "german": "rechts",
+            "english": "right",
+            "wrong": [
+              "left",
+              "straight",
+              "near"
+            ],
+            "explanation": "Rechts means right."
+          },
+          {
+            "kind": "v",
+            "german": "geradeaus",
+            "english": "straight ahead",
+            "wrong": [
+              "left",
+              "right",
+              "back"
+            ],
+            "explanation": "Geradeaus means straight ahead."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'Where is the station?'",
+            "options": [
+              "Wo ist der Bahnhof?",
+              "Wer ist der Bahnhof?",
+              "Wie ist der Bahnhof?",
+              "Warum ist der Bahnhof?"
+            ],
+            "correct": "Wo ist der Bahnhof?",
+            "explanation": "Wo ist ...? asks where something is."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Go straight ahead'",
+            "correct": [
+              "Gehen",
+              "Sie",
+              "geradeaus"
+            ],
+            "extra": [
+              "links",
+              "ich"
+            ],
+            "explanation": "Polite command: Gehen Sie..."
+          }
+        ]
+      },
+      {
+        "id": "10-3",
+        "title": "Hotels",
+        "xpReward": 65,
+        "intro": {
+          "title": "Checking in",
+          "body": "Hotel German combines articles, polite requests, and travel nouns.",
+          "tip": "🛎️ Ich habe eine Reservierung = I have a reservation."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Hotel",
+            "english": "hotel",
+            "wrong": [
+              "station",
+              "ticket",
+              "room"
+            ],
+            "explanation": "Hotel means hotel."
+          },
+          {
+            "kind": "v",
+            "german": "Zimmer",
+            "english": "room",
+            "wrong": [
+              "key",
+              "bed",
+              "door"
+            ],
+            "explanation": "Zimmer also means hotel room."
+          },
+          {
+            "kind": "v",
+            "german": "Schlüssel",
+            "english": "key",
+            "wrong": [
+              "bed",
+              "window",
+              "bill"
+            ],
+            "explanation": "Schlüssel means key."
+          },
+          {
+            "kind": "f",
+            "german": "Ich habe eine ___.",
+            "english": "I have a reservation.",
+            "blank": "Reservierung",
+            "options": [
+              "Reservierung",
+              "Fahrkarte",
+              "Rechnung",
+              "Straße"
+            ],
+            "explanation": "Reservierung means reservation."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I need a room'",
+            "correct": [
+              "Ich",
+              "brauche",
+              "ein",
+              "Zimmer"
+            ],
+            "extra": [
+              "habe",
+              "Ticket"
+            ],
+            "explanation": "Brauchen means to need."
+          }
+        ]
+      },
+      {
+        "id": "10-4",
+        "title": "Places in Town",
+        "xpReward": 65,
+        "intro": {
+          "title": "City nouns",
+          "body": "A city map gives lots of concrete nouns and useful dative/accusative prep later.",
+          "tip": "🏙️ Learn places with articles: die Apotheke, der Park, das Museum."
+        },
+        "entries": [
+          {
+            "kind": "a",
+            "noun": "Park",
+            "english": "park",
+            "article": "der",
+            "explanation": "It is der Park."
+          },
+          {
+            "kind": "a",
+            "noun": "Apotheke",
+            "english": "pharmacy",
+            "article": "die",
+            "explanation": "Words ending in -e are often feminine."
+          },
+          {
+            "kind": "a",
+            "noun": "Museum",
+            "english": "museum",
+            "article": "das",
+            "explanation": "It is das Museum."
+          },
+          {
+            "kind": "v",
+            "german": "Straße",
+            "english": "street",
+            "wrong": [
+              "city",
+              "station",
+              "ticket"
+            ],
+            "explanation": "Straße means street."
+          },
+          {
+            "kind": "f",
+            "german": "Die Apotheke ist ___ links.",
+            "english": "The pharmacy is on the left.",
+            "blank": "links",
+            "options": [
+              "links",
+              "rechts",
+              "morgen",
+              "teuer"
+            ],
+            "explanation": "Links and rechts are direction words."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "title": "Shopping, Money & Dates",
+    "icon": "🛒",
+    "color": "#F76707",
+    "description": "Ask prices, buy things, understand dates, and handle basic store interactions.",
+    "lessons": [
+      {
+        "id": "11-1",
+        "title": "Store Phrases",
+        "xpReward": 60,
+        "intro": {
+          "title": "Im Geschäft",
+          "body": "Shopping lessons teach question forms, prices, and polite interaction.",
+          "tip": "💶 Was kostet das? = How much does that cost?"
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "kaufen",
+            "english": "to buy",
+            "wrong": [
+              "to sell",
+              "to eat",
+              "to open"
+            ],
+            "explanation": "Kaufen means to buy."
+          },
+          {
+            "kind": "v",
+            "german": "verkaufen",
+            "english": "to sell",
+            "wrong": [
+              "to buy",
+              "to drink",
+              "to read"
+            ],
+            "explanation": "Verkaufen means to sell."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'How much does that cost?'",
+            "options": [
+              "Was kostet das?",
+              "Wo ist das?",
+              "Wer ist das?",
+              "Wie heißt das?"
+            ],
+            "correct": "Was kostet das?",
+            "explanation": "Kosten means to cost."
+          },
+          {
+            "kind": "f",
+            "german": "Ich möchte das ___.",
+            "english": "I would like to buy that.",
+            "blank": "kaufen",
+            "options": [
+              "kaufen",
+              "essen",
+              "trinken",
+              "schlafen"
+            ],
+            "explanation": "Ich möchte ... kaufen."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I buy bread'",
+            "correct": [
+              "Ich",
+              "kaufe",
+              "Brot"
+            ],
+            "extra": [
+              "verkaufe",
+              "Wasser"
+            ],
+            "explanation": "Ich kaufe Brot."
+          }
+        ]
+      },
+      {
+        "id": "11-2",
+        "title": "Prices",
+        "xpReward": 60,
+        "intro": {
+          "title": "Numbers with money",
+          "body": "Teachers practice prices to reinforce numbers in a realistic setting.",
+          "tip": "🪙 Euro stays mostly the same in singular/plural when naming prices."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Euro",
+            "english": "euro",
+            "wrong": [
+              "dollar",
+              "ticket",
+              "number"
+            ],
+            "explanation": "Euro is the currency word."
+          },
+          {
+            "kind": "v",
+            "german": "Cent",
+            "english": "cent",
+            "wrong": [
+              "bill",
+              "coin",
+              "street"
+            ],
+            "explanation": "Cent is used in prices."
+          },
+          {
+            "kind": "v",
+            "german": "teuer",
+            "english": "expensive",
+            "wrong": [
+              "cheap",
+              "free",
+              "small"
+            ],
+            "explanation": "Teuer means expensive."
+          },
+          {
+            "kind": "v",
+            "german": "billig",
+            "english": "cheap",
+            "wrong": [
+              "expensive",
+              "new",
+              "clean"
+            ],
+            "explanation": "Billig means cheap, sometimes low-quality."
+          },
+          {
+            "kind": "f",
+            "german": "Das kostet fünf ___.",
+            "english": "That costs five euros.",
+            "blank": "Euro",
+            "options": [
+              "Euro",
+              "Cent",
+              "Uhr",
+              "Jahre"
+            ],
+            "explanation": "Prices use kostet."
+          }
+        ]
+      },
+      {
+        "id": "11-3",
+        "title": "Clothes",
+        "xpReward": 65,
+        "intro": {
+          "title": "Things to buy",
+          "body": "Clothing gives article practice and real shopping nouns.",
+          "tip": "👕 Clothing words have mixed genders: der Mantel, die Hose, das Hemd."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Hemd",
+            "english": "shirt",
+            "wrong": [
+              "pants",
+              "coat",
+              "shoe"
+            ],
+            "explanation": "Hemd means shirt."
+          },
+          {
+            "kind": "v",
+            "german": "Hose",
+            "english": "pants",
+            "wrong": [
+              "shirt",
+              "shoe",
+              "hat"
+            ],
+            "explanation": "Hose means pants/trousers."
+          },
+          {
+            "kind": "v",
+            "german": "Schuhe",
+            "english": "shoes",
+            "wrong": [
+              "shirt",
+              "pants",
+              "gloves"
+            ],
+            "explanation": "Schuhe means shoes."
+          },
+          {
+            "kind": "a",
+            "noun": "Mantel",
+            "english": "coat",
+            "article": "der",
+            "explanation": "It is der Mantel."
+          },
+          {
+            "kind": "f",
+            "german": "Die Schuhe sind zu ___.",
+            "english": "The shoes are too expensive.",
+            "blank": "teuer",
+            "options": [
+              "teuer",
+              "billig",
+              "klein",
+              "blau"
+            ],
+            "explanation": "Zu teuer = too expensive."
+          }
+        ]
+      },
+      {
+        "id": "11-4",
+        "title": "Days & Dates",
+        "xpReward": 65,
+        "intro": {
+          "title": "Calendar basics",
+          "body": "Dates are practical for appointments, deliveries, and school scheduling.",
+          "tip": "📅 Montag, Dienstag, Mittwoch... weekdays are masculine: der Montag."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Montag",
+            "english": "Monday",
+            "wrong": [
+              "Tuesday",
+              "Sunday",
+              "Friday"
+            ],
+            "explanation": "Montag means Monday."
+          },
+          {
+            "kind": "v",
+            "german": "Dienstag",
+            "english": "Tuesday",
+            "wrong": [
+              "Thursday",
+              "Monday",
+              "Saturday"
+            ],
+            "explanation": "Dienstag means Tuesday."
+          },
+          {
+            "kind": "v",
+            "german": "Wochenende",
+            "english": "weekend",
+            "wrong": [
+              "weekday",
+              "month",
+              "year"
+            ],
+            "explanation": "Wochenende means weekend."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'heute ist Montag' mean?",
+            "options": [
+              "Today is Monday",
+              "Tomorrow is Monday",
+              "Monday is expensive",
+              "I am Monday"
+            ],
+            "correct": "Today is Monday",
+            "explanation": "Heute ist... = today is..."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'See you on Friday'",
+            "correct": [
+              "Bis",
+              "Freitag"
+            ],
+            "extra": [
+              "Hallo",
+              "Montag"
+            ],
+            "explanation": "Bis Freitag = see you Friday."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "title": "Cases: Accusative & Dative",
+    "icon": "🏰",
+    "color": "#7950F2",
+    "description": "Start using German cases for objects, people, and locations.",
+    "lessons": [
+      {
+        "id": "12-1",
+        "title": "Accusative Objects",
+        "xpReward": 70,
+        "intro": {
+          "title": "Direct objects",
+          "body": "Schools introduce accusative after basic sentence confidence. Masculine article changes are the big thing.",
+          "tip": "🎯 der → den in masculine accusative. Die and das stay the same."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "What happens to 'der Hund' as a direct object?",
+            "options": [
+              "den Hund",
+              "der Hund",
+              "dem Hund",
+              "die Hund"
+            ],
+            "correct": "den Hund",
+            "explanation": "Masculine accusative changes der to den."
+          },
+          {
+            "kind": "f",
+            "german": "Ich sehe ___ Mann.",
+            "english": "I see the man.",
+            "blank": "den",
+            "options": [
+              "den",
+              "der",
+              "dem",
+              "das"
+            ],
+            "explanation": "Mann is masculine direct object: den Mann."
+          },
+          {
+            "kind": "f",
+            "german": "Ich sehe ___ Frau.",
+            "english": "I see the woman.",
+            "blank": "die",
+            "options": [
+              "die",
+              "der",
+              "den",
+              "dem"
+            ],
+            "explanation": "Feminine accusative stays die."
+          },
+          {
+            "kind": "f",
+            "german": "Ich sehe ___ Kind.",
+            "english": "I see the child.",
+            "blank": "das",
+            "options": [
+              "das",
+              "den",
+              "dem",
+              "die"
+            ],
+            "explanation": "Neuter accusative stays das."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I have the book'",
+            "correct": [
+              "Ich",
+              "habe",
+              "das",
+              "Buch"
+            ],
+            "extra": [
+              "dem",
+              "bin"
+            ],
+            "explanation": "Buch is neuter: das Buch."
+          }
+        ]
+      },
+      {
+        "id": "12-2",
+        "title": "Ein Words in Accusative",
+        "xpReward": 70,
+        "intro": {
+          "title": "A dog, a cat, a book",
+          "body": "Ein-word changes mirror article changes, especially masculine einen.",
+          "tip": "🧠 ein Hund → einen Hund when it is the object."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich habe ___ Hund.",
+            "english": "I have a dog.",
+            "blank": "einen",
+            "options": [
+              "einen",
+              "ein",
+              "eine",
+              "einem"
+            ],
+            "explanation": "Masculine accusative: einen Hund."
+          },
+          {
+            "kind": "f",
+            "german": "Ich habe ___ Katze.",
+            "english": "I have a cat.",
+            "blank": "eine",
+            "options": [
+              "eine",
+              "einen",
+              "ein",
+              "einem"
+            ],
+            "explanation": "Feminine accusative: eine Katze."
+          },
+          {
+            "kind": "f",
+            "german": "Ich habe ___ Auto.",
+            "english": "I have a car.",
+            "blank": "ein",
+            "options": [
+              "ein",
+              "eine",
+              "einen",
+              "einem"
+            ],
+            "explanation": "Neuter accusative: ein Auto."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'I drink a coffee'?",
+            "options": [
+              "Ich trinke einen Kaffee.",
+              "Ich trinke ein Kaffee.",
+              "Ich trinke eine Kaffee.",
+              "Ich trinke dem Kaffee."
+            ],
+            "correct": "Ich trinke einen Kaffee.",
+            "explanation": "Kaffee is masculine: einen Kaffee."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I buy a ticket'",
+            "correct": [
+              "Ich",
+              "kaufe",
+              "eine",
+              "Fahrkarte"
+            ],
+            "extra": [
+              "einen",
+              "dem"
+            ],
+            "explanation": "Fahrkarte is feminine: eine Fahrkarte."
+          }
+        ]
+      },
+      {
+        "id": "12-3",
+        "title": "Dative Basics",
+        "xpReward": 75,
+        "intro": {
+          "title": "Indirect objects and locations",
+          "body": "Dative is used after many location phrases and for indirect objects.",
+          "tip": "📍 in dem = im; an dem = am."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Which article is masculine/neuter dative?",
+            "options": [
+              "dem",
+              "den",
+              "der",
+              "das"
+            ],
+            "correct": "dem",
+            "explanation": "Der/das become dem in dative."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin in ___ Schule.",
+            "english": "I am in the school.",
+            "blank": "der",
+            "options": [
+              "der",
+              "die",
+              "den",
+              "dem"
+            ],
+            "explanation": "Schule is feminine; dative feminine is der."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin im ___.",
+            "english": "I am in the house.",
+            "blank": "Haus",
+            "options": [
+              "Haus",
+              "Hause",
+              "Häuser",
+              "Hund"
+            ],
+            "explanation": "Im = in dem; das Haus becomes dem Haus."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'mit dem Bus' mean?",
+            "options": [
+              "by bus / with the bus",
+              "without the bus",
+              "to the bus",
+              "from the bus"
+            ],
+            "correct": "by bus / with the bus",
+            "explanation": "Mit always takes dative."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I go with the friend'",
+            "correct": [
+              "Ich",
+              "gehe",
+              "mit",
+              "dem",
+              "Freund"
+            ],
+            "extra": [
+              "den",
+              "der"
+            ],
+            "explanation": "Mit takes dative: dem Freund."
+          }
+        ]
+      },
+      {
+        "id": "12-4",
+        "title": "Case Contrast",
+        "xpReward": 75,
+        "intro": {
+          "title": "Seeing vs being",
+          "body": "A classroom trick: accusative often answers where to/what object; dative often answers where at.",
+          "tip": "🚪 Ich gehe in das Haus. Ich bin in dem Haus."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich gehe in ___ Park.",
+            "english": "I am going into the park.",
+            "blank": "den",
+            "options": [
+              "den",
+              "dem",
+              "der",
+              "das"
+            ],
+            "explanation": "Motion into masculine place uses accusative: den Park."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin in ___ Park.",
+            "english": "I am in the park.",
+            "blank": "dem",
+            "options": [
+              "dem",
+              "den",
+              "der",
+              "das"
+            ],
+            "explanation": "Location in masculine place uses dative: dem Park."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'I see the dog'?",
+            "options": [
+              "Ich sehe den Hund.",
+              "Ich sehe dem Hund.",
+              "Ich sehe der Hund.",
+              "Ich sehe das Hund."
+            ],
+            "correct": "Ich sehe den Hund.",
+            "explanation": "Sehen takes a direct object: accusative."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'I help the man'?",
+            "options": [
+              "Ich helfe dem Mann.",
+              "Ich helfe den Mann.",
+              "Ich helfe der Mann.",
+              "Ich helfe das Mann."
+            ],
+            "correct": "Ich helfe dem Mann.",
+            "explanation": "Helfen takes dative."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'The book is on the table'",
+            "correct": [
+              "Das",
+              "Buch",
+              "ist",
+              "auf",
+              "dem",
+              "Tisch"
+            ],
+            "extra": [
+              "den",
+              "geht"
+            ],
+            "explanation": "Location uses dative: auf dem Tisch."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "title": "Modal Verbs & Plans",
+    "icon": "🧭",
+    "color": "#228BE6",
+    "description": "Use can, must, want, should, and make plans with infinitives.",
+    "lessons": [
+      {
+        "id": "13-1",
+        "title": "Können",
+        "xpReward": 65,
+        "intro": {
+          "title": "Can / be able to",
+          "body": "Modal verbs are taught because they multiply what you can say.",
+          "tip": "🧩 Modal + infinitive at end: Ich kann Deutsch sprechen."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "können",
+            "english": "can / be able to",
+            "wrong": [
+              "must",
+              "want",
+              "should"
+            ],
+            "explanation": "Können means can."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Deutsch sprechen.",
+            "english": "I can speak German.",
+            "blank": "kann",
+            "options": [
+              "kann",
+              "können",
+              "kannst",
+              "könnt"
+            ],
+            "explanation": "Ich kann."
+          },
+          {
+            "kind": "f",
+            "german": "Du ___ gut kochen.",
+            "english": "You can cook well.",
+            "blank": "kannst",
+            "options": [
+              "kannst",
+              "kann",
+              "können",
+              "könnt"
+            ],
+            "explanation": "Du kannst."
+          },
+          {
+            "kind": "c",
+            "prompt": "Where does the second verb go with a modal?",
+            "options": [
+              "At the end",
+              "In the first position",
+              "Before the subject",
+              "It disappears"
+            ],
+            "correct": "At the end",
+            "explanation": "Modal sentence bracket: kann ... sprechen."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'We can learn German'",
+            "correct": [
+              "Wir",
+              "können",
+              "Deutsch",
+              "lernen"
+            ],
+            "extra": [
+              "kann",
+              "lerne"
+            ],
+            "explanation": "Wir können ... lernen."
+          }
+        ]
+      },
+      {
+        "id": "13-2",
+        "title": "Müssen",
+        "xpReward": 65,
+        "intro": {
+          "title": "Must / have to",
+          "body": "Müssen helps express obligations and study goals.",
+          "tip": "📌 Ich muss lernen = I have to study."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "müssen",
+            "english": "must / have to",
+            "wrong": [
+              "can",
+              "want",
+              "like"
+            ],
+            "explanation": "Müssen means must."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ arbeiten.",
+            "english": "I have to work.",
+            "blank": "muss",
+            "options": [
+              "muss",
+              "musst",
+              "müssen",
+              "müsst"
+            ],
+            "explanation": "Ich muss."
+          },
+          {
+            "kind": "f",
+            "german": "Wir ___ gehen.",
+            "english": "We have to go.",
+            "blank": "müssen",
+            "options": [
+              "müssen",
+              "muss",
+              "musst",
+              "müsst"
+            ],
+            "explanation": "Wir müssen."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'You have to sleep'?",
+            "options": [
+              "Du musst schlafen.",
+              "Du muss schlafen.",
+              "Du schlafen musst.",
+              "Du bist schlafen."
+            ],
+            "correct": "Du musst schlafen.",
+            "explanation": "Du musst + infinitive."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I have to buy bread'",
+            "correct": [
+              "Ich",
+              "muss",
+              "Brot",
+              "kaufen"
+            ],
+            "extra": [
+              "kaufe",
+              "bin"
+            ],
+            "explanation": "Infinitive goes at the end."
+          }
+        ]
+      },
+      {
+        "id": "13-3",
+        "title": "Wollen & Sollen",
+        "xpReward": 70,
+        "intro": {
+          "title": "Want and should",
+          "body": "These modals are key for plans, advice, and goals.",
+          "tip": "🎯 Ich will = I want. Ich soll = I should / am supposed to."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "wollen",
+            "english": "to want",
+            "wrong": [
+              "to can",
+              "to must",
+              "to have"
+            ],
+            "explanation": "Wollen means to want."
+          },
+          {
+            "kind": "v",
+            "german": "sollen",
+            "english": "should / supposed to",
+            "wrong": [
+              "can",
+              "like",
+              "buy"
+            ],
+            "explanation": "Sollen means should/supposed to."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ nach Berlin fahren.",
+            "english": "I want to travel to Berlin.",
+            "blank": "will",
+            "options": [
+              "will",
+              "wollen",
+              "soll",
+              "kann"
+            ],
+            "explanation": "Ich will."
+          },
+          {
+            "kind": "f",
+            "german": "Du ___ mehr üben.",
+            "english": "You should practice more.",
+            "blank": "sollst",
+            "options": [
+              "sollst",
+              "soll",
+              "sollen",
+              "will"
+            ],
+            "explanation": "Du sollst."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'She wants to drink water'",
+            "correct": [
+              "Sie",
+              "will",
+              "Wasser",
+              "trinken"
+            ],
+            "extra": [
+              "trinkt",
+              "muss"
+            ],
+            "explanation": "Modal + infinitive at the end."
+          }
+        ]
+      },
+      {
+        "id": "13-4",
+        "title": "Making Plans",
+        "xpReward": 70,
+        "intro": {
+          "title": "Plans use modals and future words",
+          "body": "Tutors often practice planning weekends because it combines time, verbs, and modal structures.",
+          "tip": "📅 Morgen will ich... = Tomorrow I want to..."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Plan",
+            "english": "plan",
+            "wrong": [
+              "problem",
+              "price",
+              "place"
+            ],
+            "explanation": "Plan means plan."
+          },
+          {
+            "kind": "v",
+            "german": "später",
+            "english": "later",
+            "wrong": [
+              "yesterday",
+              "always",
+              "never"
+            ],
+            "explanation": "Später means later."
+          },
+          {
+            "kind": "f",
+            "german": "Morgen ___ ich lernen.",
+            "english": "Tomorrow I want to study.",
+            "blank": "will",
+            "options": [
+              "will",
+              "bin",
+              "habe",
+              "lerne"
+            ],
+            "explanation": "Time first, verb second: Morgen will ich..."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which sentence is correct?",
+            "options": [
+              "Heute muss ich arbeiten.",
+              "Heute ich muss arbeiten.",
+              "Heute arbeiten muss ich.",
+              "Heute muss arbeiten ich."
+            ],
+            "correct": "Heute muss ich arbeiten.",
+            "explanation": "Verb second after a time word."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Later I can go'",
+            "correct": [
+              "Später",
+              "kann",
+              "ich",
+              "gehen"
+            ],
+            "extra": [
+              "gehe",
+              "du"
+            ],
+            "explanation": "Später kann ich gehen."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "title": "Past Tense & Storytelling",
+    "icon": "⏳",
+    "color": "#15AABF",
+    "description": "Talk about what happened using the conversational perfect tense.",
+    "lessons": [
+      {
+        "id": "14-1",
+        "title": "Perfect with Haben",
+        "xpReward": 70,
+        "intro": {
+          "title": "The speaking past",
+          "body": "German conversation often uses haben + past participle for the past.",
+          "tip": "🔧 gemacht, gelernt, gekauft: ge- + stem + -t for many regular verbs."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich habe Deutsch ___.",
+            "english": "I learned German.",
+            "blank": "gelernt",
+            "options": [
+              "gelernt",
+              "lernen",
+              "lerne",
+              "lernst"
+            ],
+            "explanation": "Lernen → gelernt."
+          },
+          {
+            "kind": "f",
+            "german": "Wir haben Brot ___.",
+            "english": "We bought bread.",
+            "blank": "gekauft",
+            "options": [
+              "gekauft",
+              "kaufen",
+              "kaufe",
+              "kauft"
+            ],
+            "explanation": "Kaufen → gekauft."
+          },
+          {
+            "kind": "f",
+            "german": "Er hat Kaffee ___.",
+            "english": "He made coffee.",
+            "blank": "gemacht",
+            "options": [
+              "gemacht",
+              "machen",
+              "macht",
+              "machte"
+            ],
+            "explanation": "Machen → gemacht."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which helper is common for regular past tense?",
+            "options": [
+              "haben",
+              "sein",
+              "werden",
+              "können"
+            ],
+            "correct": "haben",
+            "explanation": "Most regular verbs use haben."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I bought a ticket'",
+            "correct": [
+              "Ich",
+              "habe",
+              "eine",
+              "Fahrkarte",
+              "gekauft"
+            ],
+            "extra": [
+              "bin",
+              "kaufe"
+            ],
+            "explanation": "Haben + past participle."
+          }
+        ]
+      },
+      {
+        "id": "14-2",
+        "title": "Perfect with Sein",
+        "xpReward": 70,
+        "intro": {
+          "title": "Movement and change",
+          "body": "Many movement/change verbs use sein instead of haben.",
+          "tip": "🚆 Ich bin gefahren. Ich bin gegangen. Ich bin gekommen."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich bin nach Berlin ___.",
+            "english": "I traveled to Berlin.",
+            "blank": "gefahren",
+            "options": [
+              "gefahren",
+              "fahren",
+              "fahre",
+              "fährst"
+            ],
+            "explanation": "Fahren often uses sein in the perfect."
+          },
+          {
+            "kind": "f",
+            "german": "Sie ist nach Hause ___.",
+            "english": "She went home.",
+            "blank": "gegangen",
+            "options": [
+              "gegangen",
+              "gehen",
+              "geht",
+              "ging"
+            ],
+            "explanation": "Gehen uses sein."
+          },
+          {
+            "kind": "f",
+            "german": "Wir sind spät ___.",
+            "english": "We arrived late.",
+            "blank": "gekommen",
+            "options": [
+              "gekommen",
+              "kommen",
+              "kommt",
+              "kam"
+            ],
+            "explanation": "Kommen uses sein."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which sentence is correct?",
+            "options": [
+              "Ich bin gegangen.",
+              "Ich habe gegangen.",
+              "Ich gegangen bin.",
+              "Ich gehen habe."
+            ],
+            "correct": "Ich bin gegangen.",
+            "explanation": "Gehen uses sein."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'He came today'",
+            "correct": [
+              "Er",
+              "ist",
+              "heute",
+              "gekommen"
+            ],
+            "extra": [
+              "hat",
+              "kommt"
+            ],
+            "explanation": "Kommen uses sein."
+          }
+        ]
+      },
+      {
+        "id": "14-3",
+        "title": "Irregular Participles",
+        "xpReward": 75,
+        "intro": {
+          "title": "Strong verbs",
+          "body": "Some common verbs have irregular participles. Tutors teach them through repeated chunks.",
+          "tip": "📖 lesen → gelesen, essen → gegessen, trinken → getrunken."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich habe das Buch ___.",
+            "english": "I read the book.",
+            "blank": "gelesen",
+            "options": [
+              "gelesen",
+              "lesen",
+              "liest",
+              "las"
+            ],
+            "explanation": "Lesen → gelesen."
+          },
+          {
+            "kind": "f",
+            "german": "Du hast Brot ___.",
+            "english": "You ate bread.",
+            "blank": "gegessen",
+            "options": [
+              "gegessen",
+              "essen",
+              "isst",
+              "aß"
+            ],
+            "explanation": "Essen → gegessen."
+          },
+          {
+            "kind": "f",
+            "german": "Er hat Wasser ___.",
+            "english": "He drank water.",
+            "blank": "getrunken",
+            "options": [
+              "getrunken",
+              "trinken",
+              "trinkt",
+              "trank"
+            ],
+            "explanation": "Trinken → getrunken."
+          },
+          {
+            "kind": "v",
+            "german": "gestern",
+            "english": "yesterday",
+            "wrong": [
+              "today",
+              "tomorrow",
+              "later"
+            ],
+            "explanation": "Gestern means yesterday."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Yesterday I ate pizza'",
+            "correct": [
+              "Gestern",
+              "habe",
+              "ich",
+              "Pizza",
+              "gegessen"
+            ],
+            "extra": [
+              "esse",
+              "bin"
+            ],
+            "explanation": "Time first, verb second."
+          }
+        ]
+      },
+      {
+        "id": "14-4",
+        "title": "Mini Stories",
+        "xpReward": 75,
+        "intro": {
+          "title": "From sentences to stories",
+          "body": "Real classes slowly combine sentences into short personal narratives.",
+          "tip": "📘 Use time words: zuerst, dann, danach, am Ende."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "zuerst",
+            "english": "first",
+            "wrong": [
+              "then",
+              "finally",
+              "never"
+            ],
+            "explanation": "Zuerst means first."
+          },
+          {
+            "kind": "v",
+            "german": "dann",
+            "english": "then",
+            "wrong": [
+              "first",
+              "because",
+              "although"
+            ],
+            "explanation": "Dann means then."
+          },
+          {
+            "kind": "v",
+            "german": "danach",
+            "english": "after that",
+            "wrong": [
+              "before that",
+              "never",
+              "maybe"
+            ],
+            "explanation": "Danach means after that."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'First I drank coffee'?",
+            "options": [
+              "Zuerst habe ich Kaffee getrunken.",
+              "Dann Kaffee ich getrunken.",
+              "Zuerst ich trinke Kaffee.",
+              "Ich zuerst Kaffee bin."
+            ],
+            "correct": "Zuerst habe ich Kaffee getrunken.",
+            "explanation": "Time word first, helper verb second."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Then I went home'",
+            "correct": [
+              "Dann",
+              "bin",
+              "ich",
+              "nach",
+              "Hause",
+              "gegangen"
+            ],
+            "extra": [
+              "habe",
+              "gehe"
+            ],
+            "explanation": "Gehen uses sein in the perfect."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "title": "Future, Goals & Invitations",
+    "icon": "🎯",
+    "color": "#12B886",
+    "description": "Make plans, invite people, accept/decline, and talk about goals.",
+    "lessons": [
+      {
+        "id": "15-1",
+        "title": "Talking Future",
+        "xpReward": 65,
+        "intro": {
+          "title": "Future without fear",
+          "body": "German often uses present tense + future time words for near-future plans.",
+          "tip": "📅 Morgen gehe ich... = Tomorrow I am going..."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "morgen",
+            "english": "tomorrow",
+            "wrong": [
+              "yesterday",
+              "today",
+              "always"
+            ],
+            "explanation": "Morgen can mean tomorrow."
+          },
+          {
+            "kind": "v",
+            "german": "nächste Woche",
+            "english": "next week",
+            "wrong": [
+              "last week",
+              "today",
+              "this morning"
+            ],
+            "explanation": "Nächste Woche means next week."
+          },
+          {
+            "kind": "f",
+            "german": "Morgen ___ ich nach Berlin.",
+            "english": "Tomorrow I go/am going to Berlin.",
+            "blank": "gehe",
+            "options": [
+              "gehe",
+              "ging",
+              "gegangen",
+              "gehen"
+            ],
+            "explanation": "Present tense can express future with a time word."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is natural German for 'Tomorrow I work'?",
+            "options": [
+              "Morgen arbeite ich.",
+              "Morgen ich arbeite.",
+              "Ich morgen arbeite.",
+              "Arbeite morgen ich."
+            ],
+            "correct": "Morgen arbeite ich.",
+            "explanation": "Verb second after time word."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Next week I learn German'",
+            "correct": [
+              "Nächste",
+              "Woche",
+              "lerne",
+              "ich",
+              "Deutsch"
+            ],
+            "extra": [
+              "lernst",
+              "du"
+            ],
+            "explanation": "Nächste Woche lerne ich Deutsch."
+          }
+        ]
+      },
+      {
+        "id": "15-2",
+        "title": "Werden Future",
+        "xpReward": 70,
+        "intro": {
+          "title": "Formal future",
+          "body": "Werden + infinitive is the explicit future form, useful for predictions and formal statements.",
+          "tip": "🔮 Ich werde Deutsch lernen = I will learn German."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "werden",
+            "english": "will / become",
+            "wrong": [
+              "have",
+              "be",
+              "can"
+            ],
+            "explanation": "Werden can form the future."
+          },
+          {
+            "kind": "f",
+            "german": "Ich ___ Deutsch lernen.",
+            "english": "I will learn German.",
+            "blank": "werde",
+            "options": [
+              "werde",
+              "wirst",
+              "wird",
+              "werden"
+            ],
+            "explanation": "Ich werde."
+          },
+          {
+            "kind": "f",
+            "german": "Er ___ kommen.",
+            "english": "He will come.",
+            "blank": "wird",
+            "options": [
+              "wird",
+              "werde",
+              "wirst",
+              "werden"
+            ],
+            "explanation": "Er wird."
+          },
+          {
+            "kind": "c",
+            "prompt": "Where does the action verb go with werden future?",
+            "options": [
+              "At the end",
+              "Before the subject",
+              "It is removed",
+              "Always first"
+            ],
+            "correct": "At the end",
+            "explanation": "Ich werde ... lernen."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'We will travel tomorrow'",
+            "correct": [
+              "Wir",
+              "werden",
+              "morgen",
+              "reisen"
+            ],
+            "extra": [
+              "reisen",
+              "sind"
+            ],
+            "explanation": "Werden + infinitive at the end."
+          }
+        ]
+      },
+      {
+        "id": "15-3",
+        "title": "Invitations",
+        "xpReward": 70,
+        "intro": {
+          "title": "Social German",
+          "body": "Inviting and responding turns grammar into interaction, which is how tutors keep it meaningful.",
+          "tip": "🙋 Möchtest du...? = Would you like to...?"
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'Would you like to come?'",
+            "options": [
+              "Möchtest du kommen?",
+              "Willkommen du?",
+              "Kommst möchten du?",
+              "Du möchtest?"
+            ],
+            "correct": "Möchtest du kommen?",
+            "explanation": "Möchtest du...? is a polite invitation."
+          },
+          {
+            "kind": "v",
+            "german": "einladen",
+            "english": "to invite",
+            "wrong": [
+              "to arrive",
+              "to buy",
+              "to answer"
+            ],
+            "explanation": "Einladen means to invite."
+          },
+          {
+            "kind": "f",
+            "german": "Ich lade dich ___.",
+            "english": "I invite you.",
+            "blank": "ein",
+            "options": [
+              "ein",
+              "aus",
+              "auf",
+              "mit"
+            ],
+            "explanation": "Einladen is separable: ich lade ... ein."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you accept casually?",
+            "options": [
+              "Ja, gern!",
+              "Nein, danke.",
+              "Vielleicht nicht.",
+              "Ich muss gehen."
+            ],
+            "correct": "Ja, gern!",
+            "explanation": "Ja, gern = yes, gladly."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Do you want to eat pizza?'",
+            "correct": [
+              "Willst",
+              "du",
+              "Pizza",
+              "essen"
+            ],
+            "extra": [
+              "ich",
+              "isst"
+            ],
+            "explanation": "Willst du ... essen?"
+          }
+        ]
+      },
+      {
+        "id": "15-4",
+        "title": "Goals",
+        "xpReward": 70,
+        "intro": {
+          "title": "Long-term motivation",
+          "body": "Goal language connects learning with personal reasons, just like tutors ask why you study.",
+          "tip": "🏁 Ziel = goal. Ich möchte fließend sprechen."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Ziel",
+            "english": "goal",
+            "wrong": [
+              "time",
+              "mistake",
+              "ticket"
+            ],
+            "explanation": "Ziel means goal."
+          },
+          {
+            "kind": "v",
+            "german": "üben",
+            "english": "to practice",
+            "wrong": [
+              "to forget",
+              "to sleep",
+              "to cost"
+            ],
+            "explanation": "Üben means to practice."
+          },
+          {
+            "kind": "f",
+            "german": "Ich möchte jeden Tag ___.",
+            "english": "I would like to practice every day.",
+            "blank": "üben",
+            "options": [
+              "üben",
+              "schlafen",
+              "kosten",
+              "sein"
+            ],
+            "explanation": "Ich möchte + infinitive."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'fließend' mean for a language?",
+            "options": [
+              "fluent",
+              "expensive",
+              "late",
+              "empty"
+            ],
+            "correct": "fluent",
+            "explanation": "Fließend sprechen = speak fluently."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'My goal is German'",
+            "correct": [
+              "Mein",
+              "Ziel",
+              "ist",
+              "Deutsch"
+            ],
+            "extra": [
+              "meine",
+              "bin"
+            ],
+            "explanation": "Mein Ziel ist Deutsch."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "title": "Opinions, Reasons & Subordinate Clauses",
+    "icon": "💬",
+    "color": "#364FC7",
+    "description": "Explain what you think, why you think it, and connect ideas with weil/obwohl/dass.",
+    "lessons": [
+      {
+        "id": "16-1",
+        "title": "Opinions",
+        "xpReward": 75,
+        "intro": {
+          "title": "Sound like yourself",
+          "body": "Opinion phrases make German personal and prepare learners for longer speaking tasks.",
+          "tip": "💬 Ich finde... = I think/find..."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "How do you say 'I think that is good'?",
+            "options": [
+              "Ich finde das gut.",
+              "Ich bin das gut.",
+              "Ich habe das gut.",
+              "Ich gehe das gut."
+            ],
+            "correct": "Ich finde das gut.",
+            "explanation": "Ich finde... is a natural opinion phrase."
+          },
+          {
+            "kind": "v",
+            "german": "Meinung",
+            "english": "opinion",
+            "wrong": [
+              "meal",
+              "morning",
+              "mistake"
+            ],
+            "explanation": "Meinung means opinion."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Meiner Meinung nach' mean?",
+            "options": [
+              "In my opinion",
+              "After my meal",
+              "At my house",
+              "With my friend"
+            ],
+            "correct": "In my opinion",
+            "explanation": "A common opinion starter."
+          },
+          {
+            "kind": "f",
+            "german": "Ich finde Deutsch ___.",
+            "english": "I think German is interesting.",
+            "blank": "interessant",
+            "options": [
+              "interessant",
+              "teuer",
+              "links",
+              "gestern"
+            ],
+            "explanation": "Ich finde + object/adjective."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'In my opinion German is fun'",
+            "correct": [
+              "Meiner",
+              "Meinung",
+              "nach",
+              "ist",
+              "Deutsch",
+              "lustig"
+            ],
+            "extra": [
+              "weil",
+              "aber"
+            ],
+            "explanation": "Meiner Meinung nach... causes verb-second order after the phrase."
+          }
+        ]
+      },
+      {
+        "id": "16-2",
+        "title": "Weil",
+        "xpReward": 75,
+        "intro": {
+          "title": "Because",
+          "body": "Weil introduces a subordinate clause and sends the verb to the end.",
+          "tip": "🧠 Ich lerne Deutsch, weil es nützlich ist."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "weil",
+            "english": "because",
+            "wrong": [
+              "although",
+              "but",
+              "or"
+            ],
+            "explanation": "Weil means because."
+          },
+          {
+            "kind": "f",
+            "german": "Ich lerne Deutsch, ___ es Spaß macht.",
+            "english": "I learn German because it is fun.",
+            "blank": "weil",
+            "options": [
+              "weil",
+              "aber",
+              "und",
+              "oder"
+            ],
+            "explanation": "Weil introduces a reason."
+          },
+          {
+            "kind": "c",
+            "prompt": "Where does the verb go after weil?",
+            "options": [
+              "To the end",
+              "Always first",
+              "It disappears",
+              "Before weil"
+            ],
+            "correct": "To the end",
+            "explanation": "Weil sends the conjugated verb to the end."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is correct?",
+            "options": [
+              "weil ich müde bin",
+              "weil ich bin müde",
+              "weil bin ich müde",
+              "weil müde ich bin"
+            ],
+            "correct": "weil ich müde bin",
+            "explanation": "Verb at the end: bin."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'because I have time'",
+            "correct": [
+              "weil",
+              "ich",
+              "Zeit",
+              "habe"
+            ],
+            "extra": [
+              "bin",
+              "nicht"
+            ],
+            "explanation": "Verb at the end in subordinate clauses."
+          }
+        ]
+      },
+      {
+        "id": "16-3",
+        "title": "Dass",
+        "xpReward": 80,
+        "intro": {
+          "title": "That clauses",
+          "body": "Dass is common for thoughts, hopes, and statements.",
+          "tip": "💭 Ich denke, dass Deutsch schön ist."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "dass",
+            "english": "that",
+            "wrong": [
+              "because",
+              "although",
+              "when"
+            ],
+            "explanation": "Dass introduces a that-clause."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is correct?",
+            "options": [
+              "Ich denke, dass es gut ist.",
+              "Ich denke, dass es ist gut.",
+              "Ich denke, es dass gut ist.",
+              "Ich denke, dass gut ist es."
+            ],
+            "correct": "Ich denke, dass es gut ist.",
+            "explanation": "Verb at the end after dass."
+          },
+          {
+            "kind": "f",
+            "german": "Ich hoffe, ___ du kommst.",
+            "english": "I hope that you are coming.",
+            "blank": "dass",
+            "options": [
+              "dass",
+              "weil",
+              "aber",
+              "oder"
+            ],
+            "explanation": "Ich hoffe, dass..."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I know that he is here'",
+            "correct": [
+              "Ich",
+              "weiß",
+              "dass",
+              "er",
+              "hier",
+              "ist"
+            ],
+            "extra": [
+              "bin",
+              "weil"
+            ],
+            "explanation": "Dass sends ist to the end."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Ich glaube' mean?",
+            "options": [
+              "I believe / think",
+              "I buy",
+              "I need",
+              "I travel"
+            ],
+            "correct": "I believe / think",
+            "explanation": "Glauben often introduces dass clauses."
+          }
+        ]
+      },
+      {
+        "id": "16-4",
+        "title": "Obwohl & Trotzdem",
+        "xpReward": 80,
+        "intro": {
+          "title": "Contrast",
+          "body": "Intermediate lessons add contrast to make speech more natural.",
+          "tip": "⚖️ obwohl = although; trotzdem = nevertheless."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "obwohl",
+            "english": "although",
+            "wrong": [
+              "because",
+              "therefore",
+              "never"
+            ],
+            "explanation": "Obwohl means although."
+          },
+          {
+            "kind": "v",
+            "german": "trotzdem",
+            "english": "nevertheless",
+            "wrong": [
+              "because",
+              "where",
+              "always"
+            ],
+            "explanation": "Trotzdem means nevertheless/still."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is correct after obwohl?",
+            "options": [
+              "obwohl es regnet",
+              "obwohl regnet es",
+              "obwohl es regnet ist",
+              "obwohl es ist regnet"
+            ],
+            "correct": "obwohl es regnet",
+            "explanation": "Verb goes to the end if there is a finite verb; here regnet is at end of short clause."
+          },
+          {
+            "kind": "f",
+            "german": "Es regnet. ___ gehe ich spazieren.",
+            "english": "It is raining. Nevertheless I go for a walk.",
+            "blank": "Trotzdem",
+            "options": [
+              "Trotzdem",
+              "Weil",
+              "Dass",
+              "Oder"
+            ],
+            "explanation": "Trotzdem starts a main clause, verb second after it."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'although I am tired'",
+            "correct": [
+              "obwohl",
+              "ich",
+              "müde",
+              "bin"
+            ],
+            "extra": [
+              "aber",
+              "ist"
+            ],
+            "explanation": "Obwohl sends bin to the end."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "title": "School, Work & Appointments",
+    "icon": "🎒",
+    "color": "#868E96",
+    "description": "Handle school/work vocabulary, jobs, schedules, and simple appointments.",
+    "lessons": [
+      {
+        "id": "17-1",
+        "title": "School Words",
+        "xpReward": 70,
+        "intro": {
+          "title": "Learning spaces",
+          "body": "School vocabulary doubles as app vocabulary and real-life learner language.",
+          "tip": "📚 Der Unterricht = class/lesson."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Unterricht",
+            "english": "class / lesson",
+            "wrong": [
+              "teacher",
+              "homework",
+              "break"
+            ],
+            "explanation": "Unterricht means class or lesson."
+          },
+          {
+            "kind": "v",
+            "german": "Hausaufgaben",
+            "english": "homework",
+            "wrong": [
+              "class",
+              "school",
+              "book"
+            ],
+            "explanation": "Hausaufgaben means homework."
+          },
+          {
+            "kind": "v",
+            "german": "Lehrer",
+            "english": "teacher",
+            "wrong": [
+              "student",
+              "doctor",
+              "friend"
+            ],
+            "explanation": "Lehrer means male teacher/general teacher."
+          },
+          {
+            "kind": "v",
+            "german": "Schüler",
+            "english": "student / pupil",
+            "wrong": [
+              "teacher",
+              "worker",
+              "driver"
+            ],
+            "explanation": "Schüler means school student."
+          },
+          {
+            "kind": "f",
+            "german": "Ich mache meine ___.",
+            "english": "I do my homework.",
+            "blank": "Hausaufgaben",
+            "options": [
+              "Hausaufgaben",
+              "Schule",
+              "Zeit",
+              "Freunde"
+            ],
+            "explanation": "Hausaufgaben is usually plural."
+          }
+        ]
+      },
+      {
+        "id": "17-2",
+        "title": "Work Words",
+        "xpReward": 70,
+        "intro": {
+          "title": "Jobs and workplace",
+          "body": "A1 exams and real tutors often ask about profession and workplace.",
+          "tip": "💼 For jobs, German often omits ein/eine: Ich bin Lehrer."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Arbeit",
+            "english": "work",
+            "wrong": [
+              "school",
+              "home",
+              "food"
+            ],
+            "explanation": "Arbeit means work."
+          },
+          {
+            "kind": "v",
+            "german": "Beruf",
+            "english": "profession",
+            "wrong": [
+              "hobby",
+              "city",
+              "ticket"
+            ],
+            "explanation": "Beruf means profession/job."
+          },
+          {
+            "kind": "v",
+            "german": "Büro",
+            "english": "office",
+            "wrong": [
+              "factory",
+              "school",
+              "shop"
+            ],
+            "explanation": "Büro means office."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you say 'I am a teacher' naturally?",
+            "options": [
+              "Ich bin Lehrer.",
+              "Ich bin ein Lehrer always.",
+              "Ich habe Lehrer.",
+              "Ich arbeite Lehrer."
+            ],
+            "correct": "Ich bin Lehrer.",
+            "explanation": "German often omits ein/eine with professions."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I work in an office'",
+            "correct": [
+              "Ich",
+              "arbeite",
+              "in",
+              "einem",
+              "Büro"
+            ],
+            "extra": [
+              "eine",
+              "bin"
+            ],
+            "explanation": "In einem Büro uses dative."
+          }
+        ]
+      },
+      {
+        "id": "17-3",
+        "title": "Appointments",
+        "xpReward": 75,
+        "intro": {
+          "title": "Making plans formally",
+          "body": "Appointment language prepares learners for doctors, schools, offices, and everyday scheduling.",
+          "tip": "📅 Termin = appointment."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Termin",
+            "english": "appointment",
+            "wrong": [
+              "ticket",
+              "mistake",
+              "sentence"
+            ],
+            "explanation": "Termin means appointment."
+          },
+          {
+            "kind": "v",
+            "german": "spät",
+            "english": "late",
+            "wrong": [
+              "early",
+              "cheap",
+              "tired"
+            ],
+            "explanation": "Spät means late."
+          },
+          {
+            "kind": "v",
+            "german": "früh",
+            "english": "early",
+            "wrong": [
+              "late",
+              "expensive",
+              "wrong"
+            ],
+            "explanation": "Früh means early."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you say 'I have an appointment'?",
+            "options": [
+              "Ich habe einen Termin.",
+              "Ich bin einen Termin.",
+              "Ich gehe Termin.",
+              "Ich mache spät."
+            ],
+            "correct": "Ich habe einen Termin.",
+            "explanation": "Termin is masculine: einen Termin."
+          },
+          {
+            "kind": "f",
+            "german": "Der Termin ist um ___ Uhr.",
+            "english": "The appointment is at three o'clock.",
+            "blank": "drei",
+            "options": [
+              "drei",
+              "spät",
+              "früh",
+              "Tag"
+            ],
+            "explanation": "Um drei Uhr = at three o'clock."
+          }
+        ]
+      },
+      {
+        "id": "17-4",
+        "title": "Emails & Messages",
+        "xpReward": 75,
+        "intro": {
+          "title": "Modern communication",
+          "body": "Tutors increasingly practice short messages because learners need them in real life.",
+          "tip": "✉️ Keep German messages direct and polite."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Nachricht",
+            "english": "message",
+            "wrong": [
+              "appointment",
+              "question",
+              "answer"
+            ],
+            "explanation": "Nachricht means message."
+          },
+          {
+            "kind": "v",
+            "german": "E-Mail",
+            "english": "email",
+            "wrong": [
+              "letter",
+              "book",
+              "phone"
+            ],
+            "explanation": "E-Mail is used in German too."
+          },
+          {
+            "kind": "v",
+            "german": "antworten",
+            "english": "to answer",
+            "wrong": [
+              "to ask",
+              "to write",
+              "to buy"
+            ],
+            "explanation": "Antworten means to answer/reply."
+          },
+          {
+            "kind": "f",
+            "german": "Bitte ___ Sie mir.",
+            "english": "Please reply to me.",
+            "blank": "antworten",
+            "options": [
+              "antworten",
+              "kaufen",
+              "schlafen",
+              "essen"
+            ],
+            "explanation": "Polite command with Sie."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I write an email'",
+            "correct": [
+              "Ich",
+              "schreibe",
+              "eine",
+              "E-Mail"
+            ],
+            "extra": [
+              "einen",
+              "bin"
+            ],
+            "explanation": "E-Mail is feminine: eine E-Mail."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "title": "Health, Feelings & Emergencies",
+    "icon": "🏥",
+    "color": "#FA5252",
+    "description": "Say how you feel, describe problems, and ask for help.",
+    "lessons": [
+      {
+        "id": "18-1",
+        "title": "Body & Health",
+        "xpReward": 75,
+        "intro": {
+          "title": "Important survival language",
+          "body": "Health vocabulary is practical and high-stakes, so schools introduce key phrases early.",
+          "tip": "🆘 Hilfe! = Help!"
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Kopf",
+            "english": "head",
+            "wrong": [
+              "hand",
+              "foot",
+              "back"
+            ],
+            "explanation": "Kopf means head."
+          },
+          {
+            "kind": "v",
+            "german": "Hand",
+            "english": "hand",
+            "wrong": [
+              "head",
+              "leg",
+              "eye"
+            ],
+            "explanation": "Hand means hand."
+          },
+          {
+            "kind": "v",
+            "german": "Bauch",
+            "english": "stomach",
+            "wrong": [
+              "head",
+              "mouth",
+              "back"
+            ],
+            "explanation": "Bauch means stomach/belly."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Hilfe!' mean?",
+            "options": [
+              "Help!",
+              "Hello!",
+              "Sorry!",
+              "Wait!"
+            ],
+            "correct": "Help!",
+            "explanation": "Hilfe means help."
+          },
+          {
+            "kind": "f",
+            "german": "Ich habe ___ Kopfschmerzen.",
+            "english": "I have a headache.",
+            "blank": "Kopfschmerzen",
+            "options": [
+              "Kopfschmerzen",
+              "Kaffee",
+              "Zimmer",
+              "Fahrkarte"
+            ],
+            "explanation": "Kopfschmerzen literally head pains."
+          }
+        ]
+      },
+      {
+        "id": "18-2",
+        "title": "Feeling Sick",
+        "xpReward": 75,
+        "intro": {
+          "title": "Symptoms",
+          "body": "Doctors and pharmacies require simple direct sentences.",
+          "tip": "🤒 Mir ist schlecht = I feel sick/nauseous."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "krank",
+            "english": "sick / ill",
+            "wrong": [
+              "healthy",
+              "tired",
+              "hungry"
+            ],
+            "explanation": "Krank means sick."
+          },
+          {
+            "kind": "v",
+            "german": "gesund",
+            "english": "healthy",
+            "wrong": [
+              "sick",
+              "sad",
+              "late"
+            ],
+            "explanation": "Gesund means healthy."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin ___.",
+            "english": "I am sick.",
+            "blank": "krank",
+            "options": [
+              "krank",
+              "gesund",
+              "billig",
+              "links"
+            ],
+            "explanation": "Ich bin krank."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Mir ist schlecht' mean?",
+            "options": [
+              "I feel sick",
+              "I am cheap",
+              "I am late",
+              "I am German"
+            ],
+            "correct": "I feel sick",
+            "explanation": "A common phrase for nausea/unwellness."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I need a doctor'",
+            "correct": [
+              "Ich",
+              "brauche",
+              "einen",
+              "Arzt"
+            ],
+            "extra": [
+              "eine",
+              "bin"
+            ],
+            "explanation": "Arzt is masculine direct object: einen Arzt."
+          }
+        ]
+      },
+      {
+        "id": "18-3",
+        "title": "Emotions",
+        "xpReward": 80,
+        "intro": {
+          "title": "Feelings in conversation",
+          "body": "Emotion words make learner speech more personal and realistic.",
+          "tip": "🙂 Ich bin froh = I am glad."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "traurig",
+            "english": "sad",
+            "wrong": [
+              "happy",
+              "angry",
+              "tired"
+            ],
+            "explanation": "Traurig means sad."
+          },
+          {
+            "kind": "v",
+            "german": "wütend",
+            "english": "angry",
+            "wrong": [
+              "happy",
+              "sick",
+              "small"
+            ],
+            "explanation": "Wütend means angry."
+          },
+          {
+            "kind": "v",
+            "german": "nervös",
+            "english": "nervous",
+            "wrong": [
+              "calm",
+              "cheap",
+              "early"
+            ],
+            "explanation": "Nervös means nervous."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin sehr ___.",
+            "english": "I am very nervous.",
+            "blank": "nervös",
+            "options": [
+              "nervös",
+              "krank",
+              "gesund",
+              "billig"
+            ],
+            "explanation": "Sehr means very."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which means 'I am happy'?",
+            "options": [
+              "Ich bin glücklich.",
+              "Ich habe glücklich.",
+              "Ich gehe glücklich.",
+              "Ich mache glücklich."
+            ],
+            "correct": "Ich bin glücklich.",
+            "explanation": "Use sein with emotions."
+          }
+        ]
+      },
+      {
+        "id": "18-4",
+        "title": "Pharmacy & Help",
+        "xpReward": 80,
+        "intro": {
+          "title": "Asking for help",
+          "body": "This unit uses polite requests, needs, and health nouns together.",
+          "tip": "💊 Apotheke = pharmacy, not apothecary in daily English."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Apotheke",
+            "english": "pharmacy",
+            "wrong": [
+              "hospital",
+              "school",
+              "station"
+            ],
+            "explanation": "Apotheke means pharmacy."
+          },
+          {
+            "kind": "v",
+            "german": "Medizin",
+            "english": "medicine",
+            "wrong": [
+              "doctor",
+              "pain",
+              "water"
+            ],
+            "explanation": "Medizin means medicine."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you ask 'Where is the pharmacy?'",
+            "options": [
+              "Wo ist die Apotheke?",
+              "Wer ist die Apotheke?",
+              "Was kostet Apotheke?",
+              "Wann Apotheke?"
+            ],
+            "correct": "Wo ist die Apotheke?",
+            "explanation": "Apotheke is feminine."
+          },
+          {
+            "kind": "f",
+            "german": "Ich brauche ___.",
+            "english": "I need medicine.",
+            "blank": "Medizin",
+            "options": [
+              "Medizin",
+              "krank",
+              "gesund",
+              "Termin"
+            ],
+            "explanation": "Ich brauche + noun."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Please call a doctor'",
+            "correct": [
+              "Rufen",
+              "Sie",
+              "bitte",
+              "einen",
+              "Arzt"
+            ],
+            "extra": [
+              "eine",
+              "Hallo"
+            ],
+            "explanation": "Polite imperative: Rufen Sie bitte..."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "title": "Culture, Slang & Natural German",
+    "icon": "🥨",
+    "color": "#D9480F",
+    "description": "Learn natural phrases, cultural context, and expressions German speakers actually use.",
+    "lessons": [
+      {
+        "id": "19-1",
+        "title": "Everyday Reactions",
+        "xpReward": 80,
+        "intro": {
+          "title": "Sound natural",
+          "body": "Teachers and tutors add reaction phrases so learners can respond without freezing.",
+          "tip": "👍 Genau is everywhere in German conversation."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "genau",
+            "english": "exactly",
+            "wrong": [
+              "never",
+              "maybe",
+              "sorry"
+            ],
+            "explanation": "Genau means exactly/right."
+          },
+          {
+            "kind": "v",
+            "german": "klar",
+            "english": "clear / sure",
+            "wrong": [
+              "dark",
+              "late",
+              "wrong"
+            ],
+            "explanation": "Klar can mean sure/of course."
+          },
+          {
+            "kind": "v",
+            "german": "stimmt",
+            "english": "that's right",
+            "wrong": [
+              "that's wrong",
+              "maybe",
+              "never"
+            ],
+            "explanation": "Stimmt means that's right."
+          },
+          {
+            "kind": "c",
+            "prompt": "How do you casually say 'No problem'?",
+            "options": [
+              "Kein Problem",
+              "Nicht Problem",
+              "Nein Problem",
+              "Ohne Problem"
+            ],
+            "correct": "Kein Problem",
+            "explanation": "Problem is neuter: kein Problem."
+          },
+          {
+            "kind": "f",
+            "german": "Ja, ___!",
+            "english": "Yes, exactly!",
+            "blank": "genau",
+            "options": [
+              "genau",
+              "nein",
+              "spät",
+              "krank"
+            ],
+            "explanation": "Ja, genau is a natural response."
+          }
+        ]
+      },
+      {
+        "id": "19-2",
+        "title": "Common Small Talk",
+        "xpReward": 80,
+        "intro": {
+          "title": "Small talk scripts",
+          "body": "Real-world learners benefit from memorized scripts they can adapt.",
+          "tip": "☔ Weather is boring until it saves a conversation."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Wetter",
+            "english": "weather",
+            "wrong": [
+              "weekend",
+              "work",
+              "world"
+            ],
+            "explanation": "Wetter means weather."
+          },
+          {
+            "kind": "v",
+            "german": "schön",
+            "english": "beautiful / nice",
+            "wrong": [
+              "ugly",
+              "late",
+              "sad"
+            ],
+            "explanation": "Schön can mean beautiful or nice."
+          },
+          {
+            "kind": "v",
+            "german": "regnen",
+            "english": "to rain",
+            "wrong": [
+              "to snow",
+              "to work",
+              "to buy"
+            ],
+            "explanation": "Regnen means to rain."
+          },
+          {
+            "kind": "f",
+            "german": "Das Wetter ist ___.",
+            "english": "The weather is nice.",
+            "blank": "schön",
+            "options": [
+              "schön",
+              "teuer",
+              "krank",
+              "links"
+            ],
+            "explanation": "Das Wetter ist schön."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Wie läuft's?' roughly mean?",
+            "options": [
+              "How's it going?",
+              "Where are you running?",
+              "What costs it?",
+              "Who is there?"
+            ],
+            "correct": "How's it going?",
+            "explanation": "A casual phrase similar to Wie geht's?"
+          }
+        ]
+      },
+      {
+        "id": "19-3",
+        "title": "German Culture Words",
+        "xpReward": 85,
+        "intro": {
+          "title": "Cultural anchors",
+          "body": "Culture words make the language feel like a place, not just a flashcard deck.",
+          "tip": "🥨 Weihnachtsmarkt = Christmas market."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "Brezel",
+            "english": "pretzel",
+            "wrong": [
+              "cake",
+              "bread",
+              "sausage"
+            ],
+            "explanation": "Brezel means pretzel."
+          },
+          {
+            "kind": "v",
+            "german": "Feierabend",
+            "english": "end of the workday",
+            "wrong": [
+              "holiday",
+              "breakfast",
+              "homework"
+            ],
+            "explanation": "Feierabend is the feeling/time after work ends."
+          },
+          {
+            "kind": "v",
+            "german": "Weihnachtsmarkt",
+            "english": "Christmas market",
+            "wrong": [
+              "train station",
+              "pharmacy",
+              "office"
+            ],
+            "explanation": "Weihnachtsmarkt means Christmas market."
+          },
+          {
+            "kind": "c",
+            "prompt": "What does 'Guten Rutsch!' relate to?",
+            "options": [
+              "New Year",
+              "Birthday",
+              "Breakfast",
+              "Train travel"
+            ],
+            "correct": "New Year",
+            "explanation": "It is a New Year's greeting."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'The pretzel is good'",
+            "correct": [
+              "Die",
+              "Brezel",
+              "ist",
+              "gut"
+            ],
+            "extra": [
+              "der",
+              "bin"
+            ],
+            "explanation": "Brezel is feminine in many standard uses: die Brezel."
+          }
+        ]
+      },
+      {
+        "id": "19-4",
+        "title": "Softening Your German",
+        "xpReward": 85,
+        "intro": {
+          "title": "Polite and natural",
+          "body": "Words like mal, bitte, vielleicht soften sentences so you sound less robotic.",
+          "tip": "🧊 'Kannst du mal...' is softer than a bare command."
+        },
+        "entries": [
+          {
+            "kind": "v",
+            "german": "mal",
+            "english": "once / just",
+            "wrong": [
+              "never",
+              "always",
+              "there"
+            ],
+            "explanation": "Mal often softens a request."
+          },
+          {
+            "kind": "v",
+            "german": "vielleicht",
+            "english": "maybe",
+            "wrong": [
+              "exactly",
+              "never",
+              "because"
+            ],
+            "explanation": "Vielleicht means maybe."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is a softer request?",
+            "options": [
+              "Kannst du mir mal helfen?",
+              "Hilf mir!",
+              "Du hilfst mir jetzt.",
+              "Helfen du mir."
+            ],
+            "correct": "Kannst du mir mal helfen?",
+            "explanation": "Kannst du ...? makes it a request."
+          },
+          {
+            "kind": "f",
+            "german": "Kannst du mir ___ helfen?",
+            "english": "Can you help me for a moment?",
+            "blank": "mal",
+            "options": [
+              "mal",
+              "nie",
+              "weil",
+              "den"
+            ],
+            "explanation": "Mal softens the request."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'Maybe tomorrow'",
+            "correct": [
+              "Vielleicht",
+              "morgen"
+            ],
+            "extra": [
+              "gestern",
+              "weil"
+            ],
+            "explanation": "Vielleicht morgen = maybe tomorrow."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "title": "Fluency Frontier",
+    "icon": "🌌",
+    "color": "#5C7CFA",
+    "description": "Longer sentences, mixed review, and challenge material that can keep growing forever.",
+    "lessons": [
+      {
+        "id": "20-1",
+        "title": "Longer Sentence Chains",
+        "xpReward": 90,
+        "intro": {
+          "title": "Beyond one sentence",
+          "body": "Intermediate teaching uses chaining: add time, reason, place, and opinion step by step.",
+          "tip": "🧱 Build with chunks: Heute + verb + subject + object + place."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Which sentence has correct verb-second order?",
+            "options": [
+              "Heute lerne ich Deutsch im Café.",
+              "Heute ich lerne Deutsch im Café.",
+              "Heute Deutsch ich lerne im Café.",
+              "Heute im Café ich Deutsch lerne."
+            ],
+            "correct": "Heute lerne ich Deutsch im Café.",
+            "explanation": "Verb second after Heute."
+          },
+          {
+            "kind": "f",
+            "german": "Am Wochenende ___ ich meine Freunde.",
+            "english": "On the weekend I meet my friends.",
+            "blank": "treffe",
+            "options": [
+              "treffe",
+              "trifft",
+              "treffen",
+              "getroffen"
+            ],
+            "explanation": "Treffen means to meet."
+          },
+          {
+            "kind": "v",
+            "german": "deshalb",
+            "english": "therefore / that's why",
+            "wrong": [
+              "although",
+              "before",
+              "never"
+            ],
+            "explanation": "Deshalb connects cause to result."
+          },
+          {
+            "kind": "c",
+            "prompt": "What happens after 'deshalb' starts a clause?",
+            "options": [
+              "Verb comes second",
+              "Verb goes to the end",
+              "Subject must disappear",
+              "Sentence becomes a question"
+            ],
+            "correct": "Verb comes second",
+            "explanation": "Deshalb starts a main clause."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'That is why I learn German'",
+            "correct": [
+              "Deshalb",
+              "lerne",
+              "ich",
+              "Deutsch"
+            ],
+            "extra": [
+              "weil",
+              "bin"
+            ],
+            "explanation": "Deshalb + verb second."
+          }
+        ]
+      },
+      {
+        "id": "20-2",
+        "title": "Mixed Case Review",
+        "xpReward": 90,
+        "intro": {
+          "title": "Case agility",
+          "body": "A strong learner starts choosing cases by meaning, not memorized isolated phrases.",
+          "tip": "🎯 See object? Accusative. Static location? Dative."
+        },
+        "entries": [
+          {
+            "kind": "f",
+            "german": "Ich sehe ___ Bahnhof.",
+            "english": "I see the train station.",
+            "blank": "den",
+            "options": [
+              "den",
+              "dem",
+              "der",
+              "das"
+            ],
+            "explanation": "Bahnhof is masculine direct object: den."
+          },
+          {
+            "kind": "f",
+            "german": "Ich bin an ___ Bahnhof.",
+            "english": "I am at the train station.",
+            "blank": "dem",
+            "options": [
+              "dem",
+              "den",
+              "der",
+              "die"
+            ],
+            "explanation": "Static location: dative dem Bahnhof."
+          },
+          {
+            "kind": "f",
+            "german": "Ich helfe ___ Frau.",
+            "english": "I help the woman.",
+            "blank": "der",
+            "options": [
+              "der",
+              "die",
+              "den",
+              "das"
+            ],
+            "explanation": "Helfen takes dative; feminine dative is der."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which is correct?",
+            "options": [
+              "Ich kaufe einen Kaffee.",
+              "Ich kaufe ein Kaffee.",
+              "Ich kaufe einem Kaffee.",
+              "Ich kaufe der Kaffee."
+            ],
+            "correct": "Ich kaufe einen Kaffee.",
+            "explanation": "Kaffee is masculine direct object."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I go with my friend'",
+            "correct": [
+              "Ich",
+              "gehe",
+              "mit",
+              "meinem",
+              "Freund"
+            ],
+            "extra": [
+              "meinen",
+              "mein"
+            ],
+            "explanation": "Mit takes dative: meinem Freund."
+          }
+        ]
+      },
+      {
+        "id": "20-3",
+        "title": "Reading Tiny Texts",
+        "xpReward": 95,
+        "intro": {
+          "title": "Mini reading",
+          "body": "Real schools test comprehension with short practical texts, not just single words.",
+          "tip": "📖 Read for the main idea first, then details."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Text: 'Heute ist Montag. Ich arbeite im Büro.' Where is the person?",
+            "options": [
+              "At the office",
+              "At school",
+              "At the station",
+              "At home"
+            ],
+            "correct": "At the office",
+            "explanation": "Im Büro means at/in the office."
+          },
+          {
+            "kind": "c",
+            "prompt": "Text: 'Der Zug hat Verspätung.' What is the problem?",
+            "options": [
+              "The train is delayed",
+              "The hotel is expensive",
+              "The coffee is cold",
+              "The shop is closed"
+            ],
+            "correct": "The train is delayed",
+            "explanation": "Verspätung means delay."
+          },
+          {
+            "kind": "c",
+            "prompt": "Text: 'Ich bin krank und brauche Medizin.' What does the person need?",
+            "options": [
+              "Medicine",
+              "A ticket",
+              "A room",
+              "A book"
+            ],
+            "correct": "Medicine",
+            "explanation": "Medizin means medicine."
+          },
+          {
+            "kind": "c",
+            "prompt": "Text: 'Morgen fahre ich nach Berlin.' When is the trip?",
+            "options": [
+              "Tomorrow",
+              "Yesterday",
+              "Today",
+              "Next year"
+            ],
+            "correct": "Tomorrow",
+            "explanation": "Morgen means tomorrow here."
+          },
+          {
+            "kind": "c",
+            "prompt": "Text: 'Ich finde Deutsch schwer, aber interessant.' What is the opinion?",
+            "options": [
+              "German is hard but interesting",
+              "German is cheap",
+              "German is only boring",
+              "German is impossible"
+            ],
+            "correct": "German is hard but interesting",
+            "explanation": "Schwer = hard, interessant = interesting."
+          }
+        ]
+      },
+      {
+        "id": "20-4",
+        "title": "Open-Ended Practice",
+        "xpReward": 95,
+        "intro": {
+          "title": "Toward real fluency",
+          "body": "The endgame should keep mixing skills: translation, reading, grammar, and practical scenarios.",
+          "tip": "🚀 This unit is designed to expand forever with new challenge lessons later."
+        },
+        "entries": [
+          {
+            "kind": "c",
+            "prompt": "Choose the most natural sentence.",
+            "options": [
+              "Ich möchte einen Kaffee, bitte.",
+              "Ich bin Kaffee bitte.",
+              "Ich möchte eine Kaffee bitte.",
+              "Ich Kaffee möchte bitte."
+            ],
+            "correct": "Ich möchte einen Kaffee, bitte.",
+            "explanation": "Polite order with accusative einen Kaffee."
+          },
+          {
+            "kind": "f",
+            "german": "Obwohl ich müde bin, ___ ich Deutsch.",
+            "english": "Although I am tired, I am learning German.",
+            "blank": "lerne",
+            "options": [
+              "lerne",
+              "lernen",
+              "gelernt",
+              "bin"
+            ],
+            "explanation": "After the subordinate clause, the main clause begins with the verb."
+          },
+          {
+            "kind": "c",
+            "prompt": "Which phrase is best for 'In my opinion'?",
+            "options": [
+              "Meiner Meinung nach",
+              "Meinem Essen nach",
+              "Meine Meinung ist nach",
+              "Nach ich Meinung"
+            ],
+            "correct": "Meiner Meinung nach",
+            "explanation": "Meiner Meinung nach is a common phrase."
+          },
+          {
+            "kind": "b",
+            "prompt": "Build: 'I hope that I can speak fluently'",
+            "correct": [
+              "Ich",
+              "hoffe",
+              "dass",
+              "ich",
+              "fließend",
+              "sprechen",
+              "kann"
+            ],
+            "extra": [
+              "weil",
+              "bin"
+            ],
+            "explanation": "Dass sends kann to the end."
+          },
+          {
+            "kind": "c",
+            "prompt": "What is the best study strategy?",
+            "options": [
+              "Practice a little every day",
+              "Memorize once and stop",
+              "Only learn nouns without articles",
+              "Avoid making mistakes"
+            ],
+            "correct": "Practice a little every day",
+            "explanation": "Spaced, repeated practice is the whole point of Sprak."
+          }
         ]
       }
     ]
   }
 ];
+const UNITS = CURRICULUM_SPECS.map(withReviewAndCheckup);
 
-
-UNITS.push(
-  {
-    id: 7, title: "Travel Germany", icon: "🚆", color: "#20C997",
-    description: "Navigate stations, hotels, directions, and everyday travel moments.",
-    lessons: [
-      { id:"7-1", title:"Train Station", xpReward:55, intro:{title:"At the Bahnhof",body:"German train stations are full of useful words: Gleis (platform), Zug (train), Fahrkarte (ticket), and Verspätung (delay).",tip:"🚆 'Wo ist Gleis drei?' means 'Where is platform three?'"}, questions:[
-        {id:"q701",type:"mc",german:"Bahnhof",english:"train station",prompt:"What does 'Bahnhof' mean?",options:["airport","train station","hotel","street"],correct:"train station",explanation:"'der Bahnhof' is the train station."},
-        {id:"q702",type:"mc",german:"Fahrkarte",english:"ticket",prompt:"What is a 'Fahrkarte'?",options:["ticket","suitcase","platform","map"],correct:"ticket",explanation:"'die Fahrkarte' is a travel ticket."},
-        {id:"q703",type:"fill",german:"Der Zug hat ___.",english:"The train is delayed.",blank:"Verspätung",options:["Verspätung","Hunger","Zimmer","Wasser"],explanation:"'Verspätung' means delay."},
-        {id:"q704",type:"mc",prompt:"How do you ask 'Where is platform three?'",options:["Wo ist Gleis drei?","Wann ist Gleis drei?","Was kostet Gleis drei?","Ich bin Gleis drei."],correct:"Wo ist Gleis drei?",explanation:"'Wo ist...' asks where something is."},
-        {id:"q705",type:"tap_build",prompt:"Build: 'Where is the train?'",words:["Wo","ist","der","Zug","die","Straße"],correct:["Wo","ist","der","Zug"],explanation:"'Wo ist der Zug?' = Where is the train?"}
-      ]},
-      { id:"7-2", title:"Hotels & Directions", xpReward:55, intro:{title:"Finding Your Way",body:"Travel German is practical and forgiving. Focus on simple questions: where, how much, and I need.",tip:"🧭 'Ich suche...' means 'I am looking for...'"}, questions:[
-        {id:"q706",type:"mc",german:"Zimmer",english:"room",prompt:"What does 'Zimmer' mean?",options:["room","key","bed","door"],correct:"room",explanation:"'das Zimmer' means room."},
-        {id:"q707",type:"article",german:"Hotel",english:"hotel",prompt:"Which article goes with 'Hotel'?",options:["der","die","das"],correct:"das",explanation:"It's 'das Hotel'."},
-        {id:"q708",type:"fill",german:"Ich suche ___ Hotel.",english:"I am looking for the hotel.",blank:"das",options:["der","die","das","den"],explanation:"Hotel is neuter: das Hotel."},
-        {id:"q709",type:"mc",prompt:"What does 'links' mean?",options:["left","right","straight ahead","behind"],correct:"left",explanation:"'links' = left; 'rechts' = right."},
-        {id:"q710",type:"mc",prompt:"What does 'geradeaus' mean?",options:["straight ahead","left","right","nearby"],correct:"straight ahead",explanation:"'geradeaus' is a key direction word."}
-      ]}
-    ]
-  },
-  {
-    id: 8, title: "Daily Life", icon: "🏠", color: "#845EF7",
-    description: "Talk about routines, chores, home, and what you do every day.",
-    lessons: [
-      { id:"8-1", title:"Morning Routine", xpReward:60, intro:{title:"Everyday German",body:"Routines help you learn verbs naturally: wake up, eat, work, learn, sleep.",tip:"⏰ 'Ich stehe auf' means 'I get up.' The verb splits!"}, questions:[
-        {id:"q801",type:"mc",german:"aufstehen",english:"to get up",prompt:"What does 'aufstehen' mean?",options:["to get up","to eat","to sleep","to buy"],correct:"to get up",explanation:"'aufstehen' is a separable verb."},
-        {id:"q802",type:"fill",german:"Ich ___ um sieben Uhr auf.",english:"I get up at seven o'clock.",blank:"stehe",options:["stehe","steht","stehen","stehst"],explanation:"'Ich stehe ... auf' = I get up."},
-        {id:"q803",type:"mc",german:"arbeiten",english:"to work",prompt:"What does 'arbeiten' mean?",options:["to work","to live","to drink","to learn"],correct:"to work",explanation:"'arbeiten' = to work."},
-        {id:"q804",type:"tap_build",prompt:"Build: 'I learn German'",words:["Ich","lerne","Deutsch","du","lernst"],correct:["Ich","lerne","Deutsch"],explanation:"'Ich lerne Deutsch.'"},
-        {id:"q805",type:"mc",prompt:"What does 'jeden Tag' mean?",options:["every day","tonight","never","later"],correct:"every day",explanation:"'jeden Tag' = every day."}
-      ]},
-      { id:"8-2", title:"Home Words", xpReward:60, intro:{title:"Around the House",body:"House vocabulary is extremely useful because it shows up constantly in basic conversation.",tip:"🏠 Rooms often use 'das': das Zimmer, das Bad, das Wohnzimmer."}, questions:[
-        {id:"q806",type:"mc",german:"Küche",english:"kitchen",prompt:"What is 'Küche'?",options:["kitchen","bedroom","bathroom","garden"],correct:"kitchen",explanation:"'die Küche' = kitchen."},
-        {id:"q807",type:"article",german:"Tür",english:"door",prompt:"Which article goes with 'Tür'?",options:["der","die","das"],correct:"die",explanation:"'die Tür' = the door."},
-        {id:"q808",type:"mc",german:"Fenster",english:"window",prompt:"What does 'Fenster' mean?",options:["window","floor","wall","chair"],correct:"window",explanation:"'das Fenster' = window."},
-        {id:"q809",type:"fill",german:"Das ___ ist offen.",english:"The window is open.",blank:"Fenster",options:["Fenster","Tür","Tisch","Stuhl"],explanation:"'Das Fenster ist offen.'"},
-        {id:"q810",type:"mc",prompt:"What does 'sauber' mean?",options:["clean","dirty","loud","small"],correct:"clean",explanation:"'sauber' = clean."}
-      ]}
-    ]
-  },
-  {
-    id: 9, title: "Questions & Answers", icon: "❓", color: "#FAB005",
-    description: "Ask better questions and understand common answers.",
-    lessons: [
-      { id:"9-1", title:"Question Words", xpReward:65, intro:{title:"W-Fragen",body:"German question words often start with W: wer, was, wo, wann, warum, wie.",tip:"❓ 'Warum?' is 'Why?' — one of the most useful words in any language."}, questions:[
-        {id:"q901",type:"mc",german:"wer",english:"who",prompt:"What does 'wer' mean?",options:["who","what","where","when"],correct:"who",explanation:"'Wer?' = Who?"},
-        {id:"q902",type:"mc",german:"warum",english:"why",prompt:"What does 'warum' mean?",options:["why","where","when","how"],correct:"why",explanation:"'Warum?' = Why?"},
-        {id:"q903",type:"mc",prompt:"How do you ask 'Where are you?'",options:["Wo bist du?","Wer bist du?","Was bist du?","Wann bist du?"],correct:"Wo bist du?",explanation:"'Wo' means where."},
-        {id:"q904",type:"tap_build",prompt:"Build: 'What is that?'",words:["Was","ist","das","wer","wo"],correct:["Was","ist","das"],explanation:"'Was ist das?' = What is that?"},
-        {id:"q905",type:"fill",german:"___ kommst du?",english:"Where are you from?",blank:"Woher",options:["Woher","Warum","Wer","Wann"],explanation:"'Woher' = from where."}
-      ]},
-      { id:"9-2", title:"Yes, No, Maybe", xpReward:65, intro:{title:"Answering Naturally",body:"Simple answers make conversations possible, even with limited vocabulary.",tip:"👍 'Genau' means 'exactly' and Germans use it constantly."}, questions:[
-        {id:"q906",type:"mc",german:"ja",english:"yes",prompt:"What does 'ja' mean?",options:["yes","no","maybe","never"],correct:"yes",explanation:"'ja' = yes."},
-        {id:"q907",type:"mc",german:"nein",english:"no",prompt:"What does 'nein' mean?",options:["yes","no","thanks","please"],correct:"no",explanation:"'nein' = no."},
-        {id:"q908",type:"mc",german:"vielleicht",english:"maybe",prompt:"What does 'vielleicht' mean?",options:["maybe","always","never","soon"],correct:"maybe",explanation:"'vielleicht' = maybe."},
-        {id:"q909",type:"mc",prompt:"What does 'genau' mean in conversation?",options:["exactly","sorry","goodbye","hungry"],correct:"exactly",explanation:"'Genau' = exactly / right."},
-        {id:"q910",type:"fill",german:"Ja, ___!",english:"Yes, exactly!",blank:"genau",options:["genau","nein","bitte","tschüss"],explanation:"'Ja, genau!' is a very natural response."}
-      ]}
-    ]
-  },
-  {
-    id: 10, title: "Shopping & Money", icon: "🛒", color: "#F76707",
-    description: "Buy items, ask prices, and understand store phrases.",
-    lessons: [
-      { id:"10-1", title:"At the Store", xpReward:70, intro:{title:"Im Geschäft",body:"Shopping German is practical: ask how much something costs, say what you want, and understand common store words.",tip:"💶 'Was kostet das?' means 'How much does that cost?'"}, questions:[
-        {id:"q1001",type:"mc",german:"kaufen",english:"to buy",prompt:"What does 'kaufen' mean?",options:["to buy","to sell","to eat","to open"],correct:"to buy",explanation:"'kaufen' = to buy."},
-        {id:"q1002",type:"mc",prompt:"How do you ask 'How much does that cost?'",options:["Was kostet das?","Wo ist das?","Wer ist das?","Wie heißt das?"],correct:"Was kostet das?",explanation:"'kosten' means to cost."},
-        {id:"q1003",type:"fill",german:"Ich möchte das ___.",english:"I would like to buy that.",blank:"kaufen",options:["kaufen","essen","trinken","schlafen"],explanation:"'Ich möchte ... kaufen.'"},
-        {id:"q1004",type:"mc",german:"teuer",english:"expensive",prompt:"What does 'teuer' mean?",options:["expensive","cheap","small","new"],correct:"expensive",explanation:"'teuer' = expensive."},
-        {id:"q1005",type:"mc",german:"billig",english:"cheap",prompt:"What does 'billig' mean?",options:["cheap","expensive","free","broken"],correct:"cheap",explanation:"'billig' = cheap, sometimes low-quality depending on context."}
-      ]}
-    ]
-  },
-  {
-    id: 11, title: "Past & Future", icon: "⏳", color: "#15AABF",
-    description: "Talk about what happened and what will happen next.",
-    lessons: [
-      { id:"11-1", title:"Perfect Tense", xpReward:75, intro:{title:"Talking About the Past",body:"German often uses the perfect tense in conversation: ich habe gemacht, ich bin gegangen.",tip:"⏳ Most verbs use 'haben' + past participle. Movement verbs often use 'sein'."}, questions:[
-        {id:"q1101",type:"fill",german:"Ich habe Brot ___.",english:"I ate bread.",blank:"gegessen",options:["gegessen","essen","isst","esse"],explanation:"Perfect tense of essen: gegessen."},
-        {id:"q1102",type:"fill",german:"Er hat das Buch ___.",english:"He read the book.",blank:"gelesen",options:["gelesen","lesen","liest","las"],explanation:"Perfect tense of lesen: gelesen."},
-        {id:"q1103",type:"mc",prompt:"Which helper verb often goes with movement verbs?",options:["sein","haben","machen","werden"],correct:"sein",explanation:"Movement/change of state often uses sein."},
-        {id:"q1104",type:"fill",german:"Ich bin nach Berlin ___.",english:"I went/traveled to Berlin.",blank:"gefahren",options:["gefahren","fahren","fahre","fährst"],explanation:"'Ich bin ... gefahren.'"},
-        {id:"q1105",type:"mc",german:"gestern",english:"yesterday",prompt:"What does 'gestern' mean?",options:["yesterday","today","tomorrow","later"],correct:"yesterday",explanation:"'gestern' = yesterday."}
-      ]}
-    ]
-  },
-  {
-    id: 12, title: "Fluency Frontier", icon: "🌌", color: "#364FC7",
-    description: "Mixed advanced practice, idioms, opinions, and longer sentence patterns.",
-    lessons: [
-      { id:"12-1", title:"Opinions", xpReward:90, intro:{title:"Sound More Natural",body:"Once you can share opinions, German starts feeling like real conversation instead of vocabulary drills.",tip:"💬 'Ich finde...' means 'I think/find...' and is used constantly for opinions."}, questions:[
-        {id:"q1201",type:"mc",prompt:"How do you say 'I think that is good' naturally?",options:["Ich finde das gut","Ich bin das gut","Ich habe das gut","Ich gehe das gut"],correct:"Ich finde das gut",explanation:"'Ich finde das gut' is a natural opinion phrase."},
-        {id:"q1202",type:"mc",german:"trotzdem",english:"nevertheless",prompt:"What does 'trotzdem' mean?",options:["nevertheless","because","although","before"],correct:"nevertheless",explanation:"'trotzdem' = nevertheless / still."},
-        {id:"q1203",type:"fill",german:"Ich lerne Deutsch, ___ es schwer ist.",english:"I am learning German because it is hard.",blank:"weil",options:["weil","aber","und","oder"],explanation:"'weil' means because and sends the verb to the end."},
-        {id:"q1204",type:"mc",prompt:"What does 'Meiner Meinung nach' mean?",options:["In my opinion","After my meal","At my house","With my friend"],correct:"In my opinion",explanation:"A useful phrase for advanced conversation."},
-        {id:"q1205",type:"tap_build",prompt:"Build: 'In my opinion, German is fun'",words:["Meiner","Meinung","nach","ist","Deutsch","lustig"],correct:["Meiner","Meinung","nach","ist","Deutsch","lustig"],explanation:"'Meiner Meinung nach...' = In my opinion..."}
-      ]}
-    ]
-  }
-);
 
 // Flatten questions with unit/lesson info for quick lookup
 const ALL_QUESTIONS = [];
@@ -1047,7 +6812,7 @@ function PlacementQuiz({ onComplete }) {
           <div style={{color:"var(--muted)",fontSize:13}}>Let's find your level</div>
         </div>
         <div className="progress-bar" style={{marginBottom:24,height:10,background:"var(--cdark)",borderRadius:99,overflow:"hidden"}}><div style={{width:pct+"%",background:"var(--glight)",height:"100%",borderRadius:99,transition:"width .4s"}}/></div>
-        {q.german && <div className="word-card"><div className="word-de">{q.german}</div>{q.english&&<div className="word-en">{q.english}</div>}</div>}
+        {q.german && <div className="word-card"><div className="word-de">{q.german}</div></div>}
         <div className="q-card">
           <div className="q-prompt">{q.prompt}</div>
           <div className="opts">
@@ -1111,7 +6876,7 @@ function QuestionRenderer({ q, onAnswer }) {
     onAnswer(isCorrect, q.type === "tap_build" ? tapPlaced.join(" ") : selected, q);
   };
 
-  const showWordCard = q.german && (q.type === "mc" || q.type === "fill");
+  const showWordCard = q.german && q.type === "mc";
 
   return (
     <div>
@@ -1119,7 +6884,7 @@ function QuestionRenderer({ q, onAnswer }) {
         <div className="word-card">
           <div className="word-category">{q.category || ""}</div>
           <div className="word-de">{q.german}</div>
-          {q.english && <div className="word-en">{q.english}</div>}
+          
         </div>
       )}
       <div className="q-card">
@@ -1327,7 +7092,7 @@ function Roadmap({ user, onBack, onStartLesson }) {
     <div className="roadmap">
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{marginBottom:18}}>← Dashboard</button>
       <div className="roadmap-title">Sprak Roadmap</div>
-      <div className="roadmap-sub">Complete lessons, unlock new units, and turn German into a long-term adventure. {completedCount} lessons completed.</div>
+      <div className="roadmap-sub">Complete lessons, guided reviews, and end-of-unit checkups. {completedCount} assignments completed.</div>
       {UNITS.map((unit, unitIndex) => {
         const unlocked = unitUnlocked(unitIndex);
         const unitDone = unit.lessons.every(l => completed[l.id]);
