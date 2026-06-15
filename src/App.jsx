@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = { apiKey:"AIzaSyBejVYv-lIcdnzo58GG7wDclfvr2hgKse0", authDomain:"sprak-f7649.firebaseapp.com", projectId:"sprak-f7649", storageBucket:"sprak-f7649.firebasestorage.app", messagingSenderId:"589172963892", appId:"1:589172963892:web:82373424a3d71d1190a861" };
 const firebaseApp = initializeApp(firebaseConfig);

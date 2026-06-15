@@ -1,6 +1,6 @@
-# Sprak
+# Sprak Site
 
-A Vite + React build of the Sprak German-learning app.
+This is the deployable Vite React version of Sprak.
 
 ## Run locally
 
@@ -9,19 +9,27 @@ npm install
 npm run dev
 ```
 
-## Deploy on Vercel
+## Build
 
-Use these settings:
+```bash
+npm run build
+```
+
+## Vercel settings
 
 - Framework Preset: Vite
 - Install Command: npm install
 - Build Command: npm run build
 - Output Directory: dist
 
-## Firebase Auth
+## Firebase
 
-After deploying, add your Vercel domain in Firebase:
+After deploying, add your Vercel domain in:
 
-Authentication → Settings → Authorized domains
+Firebase Console → Authentication → Settings → Authorized domains
 
-Add your `.vercel.app` domain.
+Example:
+
+```txt
+your-project-name.vercel.app
+```
